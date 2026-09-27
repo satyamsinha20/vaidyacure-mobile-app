@@ -1,0 +1,195 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: #F8FAF8;
+  --foreground: #111813;
+  --card: #FFFFFF;
+  --card-foreground: #111813;
+  --popover: #FFFFFF;
+  --popover-foreground: #111813;
+  --primary: #006837;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EEF7F2;
+  --secondary-foreground: #004D26;
+  --muted: #F1F5F2;
+  --muted-foreground: #607367;
+  --accent: #EAF5ED;
+  --accent-foreground: #006837;
+  --destructive: #EF4444;
+  --border: #E4ECE6;
+  --input: #E4ECE6;
+  --ring: #006837;
+  --chart-1: #006837;
+  --chart-2: #10B981;
+  --chart-3: #F59E0B;
+  --chart-4: #3B82F6;
+  --chart-5: #EC4899;
+  --radius: 0.75rem;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #111813;
+  --sidebar-primary: #006837;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EEF7F2;
+  --sidebar-accent-foreground: #004D26;
+  --sidebar-border: #E8EFEA;
+  --sidebar-ring: #006837;
+}
+
+.dark {
+  --background: #0B130E;
+  --foreground: #F0F7F2;
+  --card: #14221A;
+  --card-foreground: #F0F7F2;
+  --popover: #14221A;
+  --popover-foreground: #F0F7F2;
+  --primary: #10B981;
+  --primary-foreground: #052E16;
+  --secondary: #1E3327;
+  --secondary-foreground: #A2B7AA;
+  --muted: #182B20;
+  --muted-foreground: #7C9686;
+  --accent: #1B3828;
+  --accent-foreground: #34D399;
+  --destructive: #F87171;
+  --border: #1E3327;
+  --input: #1E3327;
+  --ring: #10B981;
+  --chart-1: #10B981;
+  --chart-2: #34D399;
+  --chart-3: #FBBF24;
+  --chart-4: #60A5FA;
+  --chart-5: #F472B6;
+  --sidebar: #101B14;
+  --sidebar-foreground: #F0F7F2;
+  --sidebar-primary: #10B981;
+  --sidebar-primary-foreground: #052E16;
+  --sidebar-accent: #182C20;
+  --sidebar-accent-foreground: #A2B7AA;
+  --sidebar-border: #1B3324;
+  --sidebar-ring: #10B981;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* LIQUID GLASS & AMBIENT GRID UTILITIES                                      */
+/* -------------------------------------------------------------------------- */
+.bg-grid-lines {
+  background-size: 36px 36px;
+  background-image: 
+    linear-gradient(to right, rgba(0, 104, 55, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 104, 55, 0.06) 1px, transparent 1px);
+}
+
+.dark .bg-grid-lines {
+  background-size: 36px 36px;
+  background-image: 
+    linear-gradient(to right, rgba(74, 222, 128, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(74, 222, 128, 0.08) 1px, transparent 1px);
+}
+
+.liquid-glass-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 
+    0 20px 50px 0 rgba(0, 0, 0, 0.4),
+    inset 0 1px 2px 0 rgba(255, 255, 255, 0.5);
+}
+
+.dark .liquid-glass-card {
+  background: rgba(14, 28, 19, 0.25);
+  border: 1.5px solid rgba(74, 222, 128, 0.25);
+  box-shadow: 
+    0 20px 50px 0 rgba(0, 0, 0, 0.5),
+    inset 0 1px 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.liquid-glass-pane {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.02) 50%, rgba(255, 255, 255, 0.06) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.75);
+  border-left: 1px solid rgba(255, 255, 255, 0.50);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  border-right: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 
+    0 30px 70px -15px rgba(0, 0, 0, 0.55),
+    0 10px 25px -5px rgba(0, 0, 0, 0.3),
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -1px 2px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 25px 0 rgba(255, 255, 255, 0.03);
+}
+
+.liquid-glass-pill {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.05) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 
+    0 4px 15px 0 rgba(0, 0, 0, 0.2),
+    inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.7);
+}
+
+.liquid-specular-sheen {
+  background: linear-gradient(175deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.05) 30%, transparent 60%);
+}
+
+.dark .liquid-specular-sheen {
+  background: linear-gradient(175deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.02) 30%, transparent 60%);
+}
