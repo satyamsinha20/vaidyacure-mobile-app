@@ -541,7 +541,8 @@ export default function RemedyCategoryView({ config }: RemedyCategoryViewProps) 
               </div>
 
               {/* Table Body or Empty State */}
-              {isLoaded && filteredItems.length > 0 ? (
+              {/* Show cached items instantly; live API data replaces them when it arrives */}
+              {filteredItems.length > 0 ? (
                 <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-gray-100">
                   {filteredItems.map((item, idx) => {
                     const displaySymptoms = Array.isArray(item.symptoms)
@@ -642,6 +643,14 @@ export default function RemedyCategoryView({ config }: RemedyCategoryViewProps) 
                       </div>
                     );
                   })}
+                </div>
+              ) : !isLoaded ? (
+                /* First load with no cache: show a loader instead of a false "No items found" */
+                <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-4 text-center">
+                  <div className="w-8 h-8 rounded-full border-[3px] border-[#EBF8F0] border-t-[#063019] animate-spin mb-3" />
+                  <p className="text-xs sm:text-[13px] text-gray-500">
+                    Loading {config.pluralName.toLowerCase()}...
+                  </p>
                 </div>
               ) : (
                 /* Empty State Matching Screenshot */

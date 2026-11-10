@@ -6,16 +6,14 @@ export const getRemedies = async (req: Request, res: Response): Promise<void> =>
     const { category } = req.query;
     const filter = category ? { category: String(category).toLowerCase().trim() } : {};
 
-    const remedies = await Remedy.find(filter).sort({ createdAt: -1 });
+    // lean() returns plain objects, skipping Mongoose document hydration
+    const remedies = await Remedy.find(filter).sort({ createdAt: -1 }).lean();
 
     // Format response to ensure both `id` and `_id` are available
-    const formatted = remedies.map((doc) => {
-      const obj = doc.toObject();
-      return {
-        ...obj,
-        id: obj._id.toString(),
-      };
-    });
+    const formatted = remedies.map((obj) => ({
+      ...obj,
+      id: obj._id.toString(),
+    }));
 
     res.json({
       status: 'success',
