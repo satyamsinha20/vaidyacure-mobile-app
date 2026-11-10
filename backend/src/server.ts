@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import { connectDB } from './config/db.js';
 import { ENV } from './config/constants.js';
 import authRoutes from './routes/auth.routes.js';
@@ -17,7 +18,8 @@ const app = express();
 /* -------------------------------------------------------------------------- */
 /* DATABASE CONNECTION                                                        */
 /* -------------------------------------------------------------------------- */
-connectDB();
+// Warm up the connection on startup; failures are retried per request below
+connectDB().catch(() => {});
 
 /* -------------------------------------------------------------------------- */
 /* GLOBAL MIDDLEWARES                                                         */
@@ -69,12 +71,22 @@ app.get('/', (_req: Request, res: Response) => {
   });
 });
 
+// Ensure MongoDB is connected before any API route runs (needed on serverless cold starts)
+app.use('/api', async (_req: Request, _res: Response, next: NextFunction) => {
+  try {
+    await connectDB();
+    next();
+  } catch {
+    next({ status: 503, message: 'Database unavailable. Please try again shortly.' });
+  }
+});
+
 // System health check
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     service: 'vaidyacure-backend',
-    database: 'mongodb-localhost',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     uptime: `${Math.floor(process.uptime())}s`,
   });
 });
