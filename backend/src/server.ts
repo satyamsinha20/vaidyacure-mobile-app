@@ -4,7 +4,6 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import { ENV } from './config/constants.js';
-import { seedDefaultAdmin } from './scripts/seedAdmin.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import remedyRoutes from './routes/remedy.routes.js';
@@ -16,11 +15,9 @@ dotenv.config();
 const app = express();
 
 /* -------------------------------------------------------------------------- */
-/* DATABASE CONNECTION & SEEDING                                              */
+/* DATABASE CONNECTION                                                        */
 /* -------------------------------------------------------------------------- */
-connectDB().then(() => {
-  seedDefaultAdmin();
-});
+connectDB();
 
 /* -------------------------------------------------------------------------- */
 /* GLOBAL MIDDLEWARES                                                         */
