@@ -1,16 +1,12 @@
 import { z } from 'zod';
 
 /* -------------------------------------------------------------------------- */
-/* LIMITS                                                                     */
-/* -------------------------------------------------------------------------- */
-export const MAX_INTERVIEW_ROUNDS = 3;
-export const MAX_QUESTIONS_FIRST_ROUND = 8;
-export const MAX_QUESTIONS_LATER_ROUNDS = 5;
-
-/* -------------------------------------------------------------------------- */
-/* REQUEST SCHEMAS (what the mobile app sends)                                */
+/* REQUEST SCHEMA (what the mobile app sends)                                 */
 /* -------------------------------------------------------------------------- */
 const shortText = (max: number) => z.string().trim().max(max);
+
+export const PROBLEM_MIN_LENGTH = 10;
+export const PROBLEM_MAX_LENGTH = 1000;
 
 export const PatientSchema = z.object({
   age: z.number().int().min(0, 'Age must be 0 or more').max(120, 'Age cannot exceed 120'),
@@ -28,68 +24,22 @@ export const PatientSchema = z.object({
   location: shortText(80).optional(),
 });
 
-export const ComplaintSchema = z
-  .object({
-    symptoms: z.array(shortText(60)).max(20).default([]),
-    description: shortText(1000).default(''),
-    duration: z.enum([
-      'less_than_24_hours',
-      '1_to_3_days',
-      '4_to_7_days',
-      '1_to_4_weeks',
-      '1_to_6_months',
-      'more_than_6_months',
-    ]),
-    severity: z.enum(['mild', 'moderate', 'severe']),
-  })
-  .refine((c) => c.symptoms.length > 0 || c.description.length >= 3, {
-    message: 'Please select at least one symptom or describe what you are feeling.',
-  });
-
-export const AnsweredRoundSchema = z.object({
-  items: z
-    .array(
-      z.object({
-        question: shortText(400),
-        answer: shortText(400),
-      })
-    )
-    .max(10),
-});
-
 export const DiagnosisRequestSchema = z.object({
   patient: PatientSchema,
-  complaint: ComplaintSchema,
-  rounds: z.array(AnsweredRoundSchema).max(MAX_INTERVIEW_ROUNDS).default([]),
+  problem: z
+    .string()
+    .trim()
+    .min(PROBLEM_MIN_LENGTH, 'Please describe your problem in a little more detail.')
+    .max(PROBLEM_MAX_LENGTH, `Please keep the description under ${PROBLEM_MAX_LENGTH} characters.`)
+    .refine((text) => /\p{L}{2,}/u.test(text), 'Please describe your health problem in words.'),
 });
 
 export type DiagnosisRequest = z.infer<typeof DiagnosisRequestSchema>;
 
 /* -------------------------------------------------------------------------- */
-/* MODEL OUTPUT SCHEMAS (structured outputs)                                  */
-/* Keep these free of min/max constraints: limits are enforced after parsing. */
+/* MODEL OUTPUT SCHEMA                                                        */
+/* Keep it free of min/max constraints: limits are enforced after parsing.    */
 /* -------------------------------------------------------------------------- */
-export const InterviewOutputSchema = z.object({
-  urgent_warning: z
-    .string()
-    .nullable()
-    .describe('One or two short sentences telling the patient what to do right now, only if the information already suggests a possible emergency; otherwise null.'),
-  done: z
-    .boolean()
-    .describe('True when further questions would not meaningfully change the assessment or an emergency is already clear.'),
-  questions: z.array(
-    z.object({
-      text: z.string().describe('The question, in simple English, one idea only.'),
-      help: z.string().nullable().describe('Short plain explanation of any medical term, or null.'),
-      type: z.enum(['single_choice', 'multi_choice', 'yes_no', 'number', 'text']),
-      options: z.array(z.string()).describe('Answer options for single_choice and multi_choice; empty for yes_no, number and text.'),
-      unit: z.string().nullable().describe('Unit for number questions (e.g. "°F", "days"); otherwise null.'),
-    })
-  ),
-});
-
-export type InterviewOutput = z.infer<typeof InterviewOutputSchema>;
-
 const RemedyItemSchema = z.object({
   name: z.string().describe('Medicine, formulation or remedy name. Allopathy: generic name (common Indian brand in brackets is fine). Ayurveda: classical name with botanical name if a single herb. Homeopathy: remedy name with potency.'),
   purpose: z.string().describe('What it helps with for this patient.'),
@@ -106,7 +56,7 @@ const RemedySystemSchema = z.object({
   items: z.array(RemedyItemSchema),
 });
 
-export const AnalysisOutputSchema = z.object({
+export const AssessmentSchema = z.object({
   triage: z.object({
     level: z.enum(['emergency', 'urgent', 'soon', 'self_care']),
     headline: z.string().describe('One short instruction for the patient.'),
@@ -150,4 +100,14 @@ export const AnalysisOutputSchema = z.object({
   }),
 });
 
-export type AnalysisOutput = z.infer<typeof AnalysisOutputSchema>;
+export type AssessmentOutput = z.infer<typeof AssessmentSchema>;
+
+export const DiagnosisModelOutputSchema = z.object({
+  input_check: z.object({
+    status: z.enum(['ok', 'not_medical', 'too_vague']),
+    message: z.string().describe('Empty when status is ok; otherwise one or two short, friendly sentences telling the patient what to write instead.'),
+  }),
+  assessment: AssessmentSchema.nullable().describe('The clinical assessment when input_check.status is ok; otherwise null.'),
+});
+
+export type DiagnosisModelOutput = z.infer<typeof DiagnosisModelOutputSchema>;

@@ -1,21 +1,11 @@
 import { z } from 'zod';
 import {
-  AnalysisOutputSchema,
-  InterviewOutputSchema,
-  MAX_INTERVIEW_ROUNDS,
-  MAX_QUESTIONS_FIRST_ROUND,
-  MAX_QUESTIONS_LATER_ROUNDS,
-  type AnalysisOutput,
+  DiagnosisModelOutputSchema,
+  type AssessmentOutput,
+  type DiagnosisModelOutput,
   type DiagnosisRequest,
-  type InterviewOutput,
 } from './schemas.js';
-import {
-  ANALYSIS_TASK,
-  CLINICAL_SYSTEM_PROMPT,
-  buildInterviewTask,
-  buildPatientData,
-  computeBmi,
-} from './prompts.js';
+import { ANALYSIS_TASK, CLINICAL_SYSTEM_PROMPT, buildPatientData, computeBmi } from './prompts.js';
 
 /* -------------------------------------------------------------------------- */
 /* CONFIG (any OpenAI-compatible chat completions provider)                   */
@@ -23,13 +13,14 @@ import {
 const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
 const getModel = (): string => process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
 
-const INTERVIEW_TIMEOUT_MS = 60_000;
+// Vercel functions stop at 300s: (timeout x attempts) must stay below that
 const ANALYSIS_TIMEOUT_MS = 120_000;
 // One extra attempt for network errors, 5xx/429 responses and unreadable output
 const MAX_ATTEMPTS = 2;
+const MAX_OUTPUT_TOKENS = 8000;
 
 export class DiagnosisError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public code?: string) {
     super(message);
     this.name = 'DiagnosisError';
   }
@@ -44,22 +35,31 @@ const getConfig = (): { baseUrl: string; apiKey: string } => {
   return { baseUrl, apiKey };
 };
 
+// The schema goes into the prompt (JSON mode): the provider's strict json_schema
+// mode fails on large schemas, and the reply is validated with Zod anyway.
+const stripSchemaMeta = (node: unknown): unknown => {
+  if (Array.isArray(node)) return node.map(stripSchemaMeta);
+  if (!node || typeof node !== 'object') return node;
+  return Object.fromEntries(
+    Object.entries(node as Record<string, unknown>)
+      .filter(([key]) => key !== '$schema')
+      .map(([key, value]) => [key, stripSchemaMeta(value)])
+  );
+};
+
+const PROMPT_SCHEMA = JSON.stringify(stripSchemaMeta(z.toJSONSchema(DiagnosisModelOutputSchema, { target: 'draft-7' })));
+
 /* -------------------------------------------------------------------------- */
 /* MODEL CALL                                                                 */
 /* -------------------------------------------------------------------------- */
-interface ModelCallOptions<T extends z.ZodType> {
-  label: string;
-  schema: T;
-  task: string;
-  request: DiagnosisRequest;
-  maxTokens: number;
-  timeoutMs: number;
-}
-
 interface ChatCompletionResponse {
-  choices?: { finish_reason?: string; message?: { content?: string | null } }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
   error?: { message?: string };
+}
+
+interface StreamChunk {
+  choices?: { finish_reason?: string | null; delta?: { content?: string | null } }[];
+  usage?: ChatCompletionResponse['usage'];
 }
 
 // Errors worth one more attempt; everything else fails immediately
@@ -69,40 +69,86 @@ class RetryableError extends Error {
   }
 }
 
-const attemptCall = async <T extends z.ZodType>(opts: ModelCallOptions<T>, jsonSchema: object): Promise<z.infer<T>> => {
+const UNREADABLE = () => new DiagnosisError(502, 'The AI response could not be read. Please try again.');
+
+const requestOnce = async (request: DiagnosisRequest): Promise<DiagnosisModelOutput> => {
   const { baseUrl, apiKey } = getConfig();
   const started = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
 
   let response: Response;
-  let body: ChatCompletionResponse;
+  let content = '';
+  let finishReason: string | undefined;
+  let usage: ChatCompletionResponse['usage'];
   try {
     response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: getModel(),
-        max_tokens: opts.maxTokens,
+        max_tokens: MAX_OUTPUT_TOKENS,
         temperature: 0.2,
-        // JSON mode + schema in the prompt: the provider's strict json_schema mode
-        // fails on large schemas, and the output is validated with Zod anyway
+        // Streaming keeps the connection busy: the provider drops long silent requests
+        stream: true,
+        stream_options: { include_usage: true },
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: CLINICAL_SYSTEM_PROMPT },
           {
             role: 'user',
             content:
-              `${buildPatientData(opts.request)}\n\n${opts.task}\n\n` +
+              `${buildPatientData(request)}\n\n${ANALYSIS_TASK}\n\n` +
               `Reply with ONLY a JSON object (no markdown) that matches this JSON schema exactly, with every field present:\n` +
-              JSON.stringify(jsonSchema),
+              PROMPT_SCHEMA,
           },
         ],
       }),
       signal: controller.signal,
     });
-    body = (await response.json().catch(() => ({}))) as ChatCompletionResponse;
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as ChatCompletionResponse;
+      console.error(`[diagnosis] provider error ${response.status}: ${body.error?.message ?? ''}`.slice(0, 300));
+      if (response.status === 401 || response.status === 403) {
+        throw new DiagnosisError(503, 'The diagnosis service is not configured correctly. Please try again later.');
+      }
+      if (response.status === 402) {
+        throw new DiagnosisError(503, 'The diagnosis service is temporarily unavailable. Please try again later.');
+      }
+      const error = new DiagnosisError(503, 'The diagnosis service is busy right now. Please try again in a minute.');
+      if (response.status === 429 || response.status >= 500) throw new RetryableError(error);
+      throw error;
+    }
+
+    // Read the server-sent events: "data: {chunk}" lines, ending with "data: [DONE]"
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline: number;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const chunk = JSON.parse(data) as StreamChunk;
+          const choice = chunk.choices?.[0];
+          if (choice?.delta?.content) content += choice.delta.content;
+          if (choice?.finish_reason) finishReason = choice.finish_reason;
+          if (chunk.usage) usage = chunk.usage;
+        } catch {
+          // Ignore keep-alive or malformed lines
+        }
+      }
+    }
   } catch (error) {
+    if (error instanceof DiagnosisError || error instanceof RetryableError) throw error;
     const timedOut = (error as { name?: string })?.name === 'AbortError';
     throw new RetryableError(
       timedOut
@@ -113,163 +159,52 @@ const attemptCall = async <T extends z.ZodType>(opts: ModelCallOptions<T>, jsonS
     clearTimeout(timer);
   }
 
-  if (!response.ok) {
-    console.error(`[diagnosis] ${opts.label} provider error ${response.status}: ${body.error?.message ?? ''}`.slice(0, 300));
-    if (response.status === 401 || response.status === 403) {
-      throw new DiagnosisError(503, 'The diagnosis service is not configured correctly. Please try again later.');
-    }
-    if (response.status === 402) {
-      throw new DiagnosisError(503, 'The diagnosis service is temporarily unavailable. Please try again later.');
-    }
-    const error = new DiagnosisError(503, 'The diagnosis service is busy right now. Please try again in a minute.');
-    if (response.status === 429 || response.status >= 500) throw new RetryableError(error);
-    throw error;
-  }
-
-  const choice = body.choices?.[0];
   // Log usage only - never log patient data
   console.log(
-    `[diagnosis] ${opts.label} model=${getModel()} finish=${choice?.finish_reason} ` +
-      `in=${body.usage?.prompt_tokens ?? '?'} out=${body.usage?.completion_tokens ?? '?'} ` +
-      `cost=${body.usage?.cost ?? '?'} ms=${Date.now() - started}`
+    `[diagnosis] model=${getModel()} finish=${finishReason} ` +
+      `in=${usage?.prompt_tokens ?? '?'} out=${usage?.completion_tokens ?? '?'} ` +
+      `cost=${usage?.cost ?? '?'} ms=${Date.now() - started}`
   );
 
-  const unreadable = new DiagnosisError(502, 'The AI response could not be read. Please try again.');
-  if (choice?.finish_reason === 'length') throw new RetryableError(unreadable);
+  if (finishReason === 'length') throw new RetryableError(UNREADABLE());
 
   let json: unknown;
   try {
-    json = JSON.parse(choice?.message?.content ?? '');
+    json = JSON.parse(content);
   } catch {
-    throw new RetryableError(unreadable);
+    throw new RetryableError(UNREADABLE());
   }
-  const parsed = opts.schema.safeParse(json);
+  const parsed = DiagnosisModelOutputSchema.safeParse(json);
   if (!parsed.success) {
-    console.error(`[diagnosis] ${opts.label} schema mismatch:`, parsed.error.issues.slice(0, 3));
-    throw new RetryableError(unreadable);
+    console.error('[diagnosis] schema mismatch:', parsed.error.issues.slice(0, 3));
+    throw new RetryableError(UNREADABLE());
+  }
+  if (parsed.data.input_check.status === 'ok' && !parsed.data.assessment) {
+    throw new RetryableError(UNREADABLE());
   }
   return parsed.data;
 };
 
-/**
- * Some providers only accept a single JSON type per field, so nullable fields
- * (["string", "null"]) are sent as plain strings. Empty strings are already
- * treated as "not provided" when the output is normalised.
- */
-const simplifySchema = (node: unknown): unknown => {
-  if (Array.isArray(node)) return node.map(simplifySchema);
-  if (!node || typeof node !== 'object') return node;
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-    if (key === '$schema') continue;
-    if (key === 'type' && Array.isArray(value)) {
-      out.type = value.find((t) => t !== 'null') ?? 'string';
-    } else {
-      out[key] = simplifySchema(value);
-    }
-  }
-  return out;
-};
-
-const callModel = async <T extends z.ZodType>(opts: ModelCallOptions<T>): Promise<z.infer<T>> => {
-  const jsonSchema = simplifySchema(z.toJSONSchema(opts.schema, { target: 'draft-7' })) as object;
+const callModel = async (request: DiagnosisRequest): Promise<DiagnosisModelOutput> => {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await attemptCall(opts, jsonSchema);
+      return await requestOnce(request);
     } catch (error) {
       if (error instanceof RetryableError) {
         if (attempt < MAX_ATTEMPTS) continue;
         throw error.final;
       }
       if (error instanceof DiagnosisError) throw error;
-      console.error(`[diagnosis] ${opts.label} unexpected error:`, error);
+      console.error('[diagnosis] unexpected error:', error);
       throw new DiagnosisError(500, 'Something went wrong while analysing. Please try again.');
     }
   }
 };
 
 /* -------------------------------------------------------------------------- */
-/* INTERVIEW (adaptive follow-up questions)                                   */
+/* ANALYSIS (input check, triage, possible conditions and remedies)           */
 /* -------------------------------------------------------------------------- */
-export interface InterviewQuestion {
-  id: string;
-  text: string;
-  help: string | null;
-  type: 'single_choice' | 'multi_choice' | 'yes_no' | 'number' | 'text';
-  options: string[];
-  unit: string | null;
-}
-
-export interface InterviewResult {
-  round: number;
-  done: boolean;
-  urgentWarning: string | null;
-  questions: InterviewQuestion[];
-}
-
-const normalizeQuestion = (
-  q: InterviewOutput['questions'][number],
-  round: number,
-  index: number
-): InterviewQuestion | null => {
-  const text = q.text.trim();
-  if (!text) return null;
-
-  let type = q.type;
-  let options = Array.from(new Set(q.options.map((o) => o.trim()).filter(Boolean))).slice(0, 8);
-
-  if (type === 'yes_no') {
-    options = ['Yes', 'No', 'Not sure'];
-  } else if (type === 'single_choice' || type === 'multi_choice') {
-    if (options.length < 2) type = 'text';
-  }
-  if (type === 'number' || type === 'text') options = [];
-
-  return {
-    id: `r${round}q${index + 1}`,
-    text,
-    help: q.help?.trim() || null,
-    type,
-    options,
-    unit: type === 'number' ? q.unit?.trim() || null : null,
-  };
-};
-
-export const runInterview = async (request: DiagnosisRequest): Promise<InterviewResult> => {
-  const round = request.rounds.length + 1;
-  if (round > MAX_INTERVIEW_ROUNDS) {
-    return { round, done: true, urgentWarning: null, questions: [] };
-  }
-
-  const output = await callModel({
-    label: `interview r${round}`,
-    schema: InterviewOutputSchema,
-    task: buildInterviewTask(round),
-    request,
-    maxTokens: 3000,
-    timeoutMs: INTERVIEW_TIMEOUT_MS,
-  });
-
-  const limit = round === 1 ? MAX_QUESTIONS_FIRST_ROUND : MAX_QUESTIONS_LATER_ROUNDS;
-  const questions = output.done
-    ? []
-    : output.questions
-        .slice(0, limit)
-        .map((q, i) => normalizeQuestion(q, round, i))
-        .filter((q): q is InterviewQuestion => q !== null);
-
-  return {
-    round,
-    done: questions.length === 0,
-    urgentWarning: output.urgent_warning?.trim() || null,
-    questions,
-  };
-};
-
-/* -------------------------------------------------------------------------- */
-/* ANALYSIS (differential diagnosis, triage and remedies)                     */
-/* -------------------------------------------------------------------------- */
-type RemedySystemOutput = AnalysisOutput['remedies']['allopathy'];
+type RemedySystemOutput = AssessmentOutput['remedies']['allopathy'];
 
 export interface RemedySystem {
   available: boolean;
@@ -279,13 +214,13 @@ export interface RemedySystem {
 }
 
 export interface AnalysisResult {
-  triage: AnalysisOutput['triage'];
+  triage: AssessmentOutput['triage'];
   immediateActions: string[];
   summary: string;
-  conditions: AnalysisOutput['conditions'];
+  conditions: AssessmentOutput['conditions'];
   redFlags: string[];
   warningSigns: string[];
-  recommendedTests: AnalysisOutput['recommended_tests'];
+  recommendedTests: AssessmentOutput['recommended_tests'];
   specialist: string;
   remedies: {
     allopathy: RemedySystem;
@@ -293,14 +228,19 @@ export interface AnalysisResult {
     homeopathy: RemedySystem;
   };
   homeCare: string[];
-  diet: AnalysisOutput['diet'];
-  confidence: AnalysisOutput['confidence'];
+  diet: AssessmentOutput['diet'];
+  confidence: AssessmentOutput['confidence'];
   meta: {
     bmi: number;
     model: string;
     generatedAt: string;
   };
 }
+
+const REJECTION_DEFAULTS: Record<'not_medical' | 'too_vague', string> = {
+  not_medical: 'Please describe only your health problem: what you feel, since when and how severe it is.',
+  too_vague: 'Please add more details: since when, how severe it is, where exactly, and any other symptoms.',
+};
 
 const EMERGENCY_REMEDY_REASON = 'This needs emergency medical care. Do not self-medicate.';
 
@@ -323,11 +263,12 @@ const normalizeRemedySystem = (system: RemedySystemOutput, isEmergency: boolean)
   return { available: true, unavailableReason: null, note: system.note?.trim() || null, items };
 };
 
-const normalizeConditions = (conditions: AnalysisOutput['conditions']): AnalysisOutput['conditions'] => {
+const normalizeConditions = (conditions: AssessmentOutput['conditions']): AssessmentOutput['conditions'] => {
   const list = conditions
     .filter((c) => c.name.trim())
     .map((c) => ({
       ...c,
+      icd10: c.icd10?.trim() || null,
       probability: Math.round(Math.min(100, Math.max(0, Number.isFinite(c.probability) ? c.probability : 0))),
       supporting: cleanList(c.supporting, 6),
       against: cleanList(c.against, 6),
@@ -346,37 +287,36 @@ const normalizeConditions = (conditions: AnalysisOutput['conditions']): Analysis
 };
 
 export const runAnalysis = async (request: DiagnosisRequest): Promise<AnalysisResult> => {
-  const output = await callModel({
-    label: 'analysis',
-    schema: AnalysisOutputSchema,
-    task: ANALYSIS_TASK,
-    request,
-    maxTokens: 8000,
-    timeoutMs: ANALYSIS_TIMEOUT_MS,
-  });
+  const output = await callModel(request);
 
-  const isEmergency = output.triage.level === 'emergency';
+  const { status, message } = output.input_check;
+  if (status !== 'ok') {
+    throw new DiagnosisError(422, message.trim() || REJECTION_DEFAULTS[status], status);
+  }
+
+  const assessment = output.assessment as AssessmentOutput;
+  const isEmergency = assessment.triage.level === 'emergency';
 
   return {
-    triage: output.triage,
-    immediateActions: cleanList(output.immediate_actions, 6),
-    summary: output.summary.trim(),
-    conditions: normalizeConditions(output.conditions),
-    redFlags: cleanList(output.red_flags, 8),
-    warningSigns: cleanList(output.warning_signs, 8),
-    recommendedTests: output.recommended_tests.filter((t) => t.name.trim()).slice(0, 6),
-    specialist: output.specialist.trim(),
+    triage: assessment.triage,
+    immediateActions: cleanList(assessment.immediate_actions, 6),
+    summary: assessment.summary.trim(),
+    conditions: normalizeConditions(assessment.conditions),
+    redFlags: cleanList(assessment.red_flags, 8),
+    warningSigns: cleanList(assessment.warning_signs, 8),
+    recommendedTests: assessment.recommended_tests.filter((t) => t.name.trim()).slice(0, 6),
+    specialist: assessment.specialist.trim(),
     remedies: {
-      allopathy: normalizeRemedySystem(output.remedies.allopathy, isEmergency),
-      ayurveda: normalizeRemedySystem(output.remedies.ayurveda, isEmergency),
-      homeopathy: normalizeRemedySystem(output.remedies.homeopathy, isEmergency),
+      allopathy: normalizeRemedySystem(assessment.remedies.allopathy, isEmergency),
+      ayurveda: normalizeRemedySystem(assessment.remedies.ayurveda, isEmergency),
+      homeopathy: normalizeRemedySystem(assessment.remedies.homeopathy, isEmergency),
     },
-    homeCare: cleanList(output.home_care, 8),
+    homeCare: cleanList(assessment.home_care, 8),
     diet: {
-      favor: cleanList(output.diet.favor, 8),
-      avoid: cleanList(output.diet.avoid, 8),
+      favor: cleanList(assessment.diet.favor, 8),
+      avoid: cleanList(assessment.diet.avoid, 8),
     },
-    confidence: output.confidence,
+    confidence: assessment.confidence,
     meta: {
       bmi: computeBmi(request.patient.heightCm, request.patient.weightKg),
       model: getModel(),

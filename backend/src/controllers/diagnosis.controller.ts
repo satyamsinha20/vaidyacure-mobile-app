@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { DiagnosisRequestSchema, type DiagnosisRequest } from '../services/diagnosis/schemas.js';
-import { DiagnosisError, runAnalysis, runInterview } from '../services/diagnosis/engine.js';
-import { consumeDailyQuota, type UsageKind } from '../services/diagnosis/usageLimiter.js';
+import { DiagnosisRequestSchema } from '../services/diagnosis/schemas.js';
+import { DiagnosisError, runAnalysis } from '../services/diagnosis/engine.js';
+import { consumeDailyQuota } from '../services/diagnosis/usageLimiter.js';
 
 const getClientIp = (req: Request): string => {
   const forwarded = req.headers['x-forwarded-for'];
@@ -19,65 +19,42 @@ const getDeviceId = (req: Request): string | undefined => {
 };
 
 /**
- * Validates the body and applies the daily quota. Sends the error response
- * itself and returns null when the request must not continue.
- */
-const prepareRequest = async (req: Request, res: Response, kind: UsageKind): Promise<DiagnosisRequest | null> => {
-  const parsed = DiagnosisRequestSchema.safeParse(req.body);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    res.status(400).json({
-      status: 'error',
-      message: issue ? `${issue.path.join('.') || 'request'}: ${issue.message}` : 'Invalid request.',
-    });
-    return null;
-  }
-
-  const quota = await consumeDailyQuota(kind, getClientIp(req), getDeviceId(req));
-  if (!quota.allowed) {
-    res.status(429).json({ status: 'error', message: quota.message });
-    return null;
-  }
-  return parsed.data;
-};
-
-const sendError = (res: Response, error: unknown): void => {
-  if (error instanceof DiagnosisError) {
-    res.status(error.status).json({ status: 'error', message: error.message });
-    return;
-  }
-  console.error('[diagnosis] unhandled error:', error);
-  res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
-};
-
-/**
- * @desc    Next round of adaptive follow-up questions
- * @route   POST /api/diagnosis/interview
- * @access  Public (Mobile App), rate-limited
- */
-export const interview = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const request = await prepareRequest(req, res, 'interview');
-    if (!request) return;
-    const data = await runInterview(request);
-    res.json({ status: 'success', data });
-  } catch (error) {
-    sendError(res, error);
-  }
-};
-
-/**
- * @desc    Differential diagnosis, triage and remedies
+ * @desc    Check the patient's problem description, then return triage,
+ *          possible conditions and remedies (one AI call)
  * @route   POST /api/diagnosis/analyze
  * @access  Public (Mobile App), rate-limited
  */
 export const analyze = async (req: Request, res: Response): Promise<void> => {
   try {
-    const request = await prepareRequest(req, res, 'analysis');
-    if (!request) return;
-    const data = await runAnalysis(request);
+    const parsed = DiagnosisRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      // Problems with the description itself are answered without spending AI tokens
+      if (issue?.path[0] === 'problem') {
+        res.status(422).json({ status: 'error', code: 'too_vague', message: issue.message });
+        return;
+      }
+      res.status(400).json({
+        status: 'error',
+        message: issue ? `${issue.path.join('.') || 'request'}: ${issue.message}` : 'Invalid request.',
+      });
+      return;
+    }
+
+    const quota = await consumeDailyQuota(getClientIp(req), getDeviceId(req));
+    if (!quota.allowed) {
+      res.status(429).json({ status: 'error', code: 'limit_reached', message: quota.message });
+      return;
+    }
+
+    const data = await runAnalysis(parsed.data);
     res.json({ status: 'success', data });
   } catch (error) {
-    sendError(res, error);
+    if (error instanceof DiagnosisError) {
+      res.status(error.status).json({ status: 'error', code: error.code, message: error.message });
+      return;
+    }
+    console.error('[diagnosis] unhandled error:', error);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 };
