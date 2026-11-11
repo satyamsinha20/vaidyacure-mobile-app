@@ -8,6 +8,7 @@ import { ENV } from './config/constants.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import remedyRoutes from './routes/remedy.routes.js';
+import diagnosisRoutes from './routes/diagnosis.routes.js';
 
 // Load environment configuration
 dotenv.config();
@@ -99,6 +100,9 @@ app.use('/api/users', userRoutes);
 
 // Remedies & Medicines catalog routes (shared across SuperAdmin, Moderator, App)
 app.use('/api/remedies', remedyRoutes);
+
+// AI symptom diagnosis for the mobile app
+app.use('/api/diagnosis', diagnosisRoutes);
 
 /* -------------------------------------------------------------------------- */
 /* ERROR HANDLING MIDDLEWARES                                                 */
