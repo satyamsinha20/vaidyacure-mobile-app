@@ -12,4 +12,5 @@ export const ROUTES = {
   MANAGE_ROLES: '/manage-roles',
   MANAGE_USERS: '/manage-users',
   REMEDIES: '/remedies',
+  AI_DOCTOR: '/ai-doctor',
 } as const;

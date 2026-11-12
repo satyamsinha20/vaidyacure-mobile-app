@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { ENV } from '../config/constants.js';
+import { getJwtSecret, ServerConfigError, type AdminRole } from '../config/constants.js';
 import { Admin, IAdmin } from '../models/Admin.js';
 
 // Extend Express Request type to include authenticated admin
@@ -36,8 +36,8 @@ export const authenticateAdmin = async (
       return;
     }
 
-    // Verify JWT
-    const decoded = jwt.verify(token, ENV.JWT_SECRET) as JwtPayload;
+    // Verify JWT (HS256 only, so tokens can never be accepted with another algorithm)
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as JwtPayload;
 
     // Find admin and verify active status
     const admin = await Admin.findById(decoded.id);
@@ -54,10 +54,25 @@ export const authenticateAdmin = async (
     req.admin = admin;
     next();
   } catch (error: any) {
-    console.error('Auth verification error:', error.message);
+    if (error instanceof ServerConfigError) {
+      console.error('[auth] server misconfiguration:', error.message);
+      res.status(500).json({ status: 'error', message: 'Server security is not configured. Contact the administrator.' });
+      return;
+    }
     res.status(401).json({
       status: 'error',
       message: 'Invalid or expired session token.',
     });
   }
 };
+
+/** Allows the request only for the given admin roles (use after authenticateAdmin) */
+export const requireRole =
+  (...roles: AdminRole[]) =>
+  (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    if (!req.admin || !roles.includes(req.admin.role)) {
+      res.status(403).json({ status: 'error', message: 'You do not have permission to perform this action.' });
+      return;
+    }
+    next();
+  };

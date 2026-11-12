@@ -1,15 +1,21 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { ENV } from '../config/constants.js';
+import { ENV, getJwtSecret, ServerConfigError } from '../config/constants.js';
 import { Admin } from '../models/Admin.js';
 import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
+import { getClientIp, incrementCounter } from '../services/rateLimit.js';
 
 // Helper to generate JWT
 const signToken = (id: string, email: string, role: string): string => {
-  return jwt.sign({ id, email, role }, ENV.JWT_SECRET, {
+  return jwt.sign({ id, email, role }, getJwtSecret(), {
+    algorithm: 'HS256',
     expiresIn: ENV.JWT_EXPIRES_IN as any,
   });
 };
+
+// Brute-force protection: failed and successful attempts both count
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
 
 /**
  * @desc    Authenticate Admin & generate JWT
@@ -18,13 +24,26 @@ const signToken = (id: string, email: string, role: string): string => {
  */
 export const loginAdmin = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body ?? {};
 
-    // Validate request inputs
-    if (!email || !password) {
+    // Validate request inputs (strings only: blocks NoSQL operator injection like {"$gt": ""})
+    if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
       res.status(400).json({
         status: 'error',
         message: 'Please provide both email and password.',
+      });
+      return;
+    }
+
+    const window = Math.floor(Date.now() / LOGIN_WINDOW_MS);
+    const [ipAttempts, emailAttempts] = await Promise.all([
+      incrementCounter(`login:ip:${getClientIp(req)}:${window}`, LOGIN_WINDOW_MS * 2),
+      incrementCounter(`login:email:${email.toLowerCase().trim()}:${window}`, LOGIN_WINDOW_MS * 2),
+    ]);
+    if (ipAttempts > LOGIN_MAX_ATTEMPTS || emailAttempts > LOGIN_MAX_ATTEMPTS) {
+      res.status(429).json({
+        status: 'error',
+        message: 'Too many login attempts. Please wait 15 minutes and try again.',
       });
       return;
     }
@@ -79,6 +98,11 @@ export const loginAdmin = async (req: Request, res: Response): Promise<void> => 
       },
     });
   } catch (error: any) {
+    if (error instanceof ServerConfigError) {
+      console.error('[auth] server misconfiguration:', error.message);
+      res.status(500).json({ status: 'error', message: 'Server security is not configured. Contact the administrator.' });
+      return;
+    }
     console.error('Login error:', error);
     res.status(500).json({
       status: 'error',

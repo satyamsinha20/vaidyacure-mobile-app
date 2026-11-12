@@ -1,7 +1,17 @@
+import Cookies from "js-cookie";
 import { APP_CONFIG } from "@/lib/constants";
 import { RemedyItem } from "@/components/remedies/RemedyCategoryView";
 
 const API_BASE = APP_CONFIG.API_BASE_URL;
+
+// Writes need the admin session token (the backend rejects anonymous changes)
+const authHeaders = (): Record<string, string> => {
+  const token = Cookies.get(APP_CONFIG.COOKIE_TOKEN_KEY);
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
 
 export const remedyService = {
   /**
@@ -52,7 +62,7 @@ export const remedyService = {
     try {
       const res = await fetch(`${API_BASE}/remedies`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ ...remedyData, category: category.toLowerCase() }),
       });
 
@@ -122,7 +132,7 @@ export const remedyService = {
     try {
       const res = await fetch(`${API_BASE}/remedies/${encodeURIComponent(id)}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify(remedyData),
       });
 
@@ -173,6 +183,7 @@ export const remedyService = {
     try {
       await fetch(`${API_BASE}/remedies/${encodeURIComponent(id)}`, {
         method: "DELETE",
+        headers: authHeaders(),
       });
     } catch (err) {
       console.warn("Backend delete remedy error:", err);

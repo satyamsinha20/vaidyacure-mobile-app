@@ -14,6 +14,7 @@ import {
   Shield,
   LayoutDashboard,
   Leaf,
+  Stethoscope,
 } from "lucide-react";
 import { authService, AdminUser, DEFAULT_ADMIN } from "@/services/auth.service";
 import { ROUTES } from "@/lib/constants";
@@ -134,6 +135,17 @@ export default function TopNav({ onToggleSidebar, adminUser }: TopNavProps) {
           <LayoutDashboard className="w-3.5 h-3.5 text-emerald-700" />
           <span className="hidden sm:inline">Dashboard</span>
         </Link>
+
+        {/* AI Doctor configuration (super admin only) */}
+        {isSuperAdmin && (
+          <Link
+            href={ROUTES.AI_DOCTOR}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50/90 hover:bg-emerald-100 text-[#0F472B] text-xs font-bold border border-emerald-200/80 transition-all cursor-pointer shadow-2xs shrink-0"
+          >
+            <Stethoscope className="w-3.5 h-3.5 text-emerald-700" />
+            <span className="hidden sm:inline">AI Doctor</span>
+          </Link>
+        )}
       </div>
 
       {/* 3. Right: Notifications & Admin Profile Dropdown */}

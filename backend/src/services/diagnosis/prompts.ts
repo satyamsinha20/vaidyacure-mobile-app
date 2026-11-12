@@ -1,4 +1,4 @@
-import type { DiagnosisRequest } from './schemas.js';
+import type { PatientInput } from './schemas.js';
 
 /* -------------------------------------------------------------------------- */
 /* SYSTEM PROMPT (stable - kept byte-identical so providers can cache it)     */
@@ -27,7 +27,7 @@ Safety rules (never break these)
 /* -------------------------------------------------------------------------- */
 /* PATIENT CONTEXT                                                            */
 /* -------------------------------------------------------------------------- */
-const PREGNANCY_LABELS: Record<DiagnosisRequest['patient']['pregnancy'], string> = {
+const PREGNANCY_LABELS: Record<PatientInput['pregnancy'], string> = {
   pregnant: 'currently pregnant',
   breastfeeding: 'currently breastfeeding',
   no: 'not pregnant and not breastfeeding',
@@ -62,8 +62,11 @@ const clean = (text: string): string => text.replace(/[<>]/g, '').trim();
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-export const buildPatientData = (req: DiagnosisRequest): string => {
-  const { patient, problem } = req;
+/**
+ * Patient facts plus the patient's own words (a description or a consultation
+ * transcript), wrapped so the model treats all of it as data, not instructions.
+ */
+export const buildPatientData = (patient: PatientInput, contentLabel: string, content: string): string => {
   const bmi = computeBmi(patient.heightCm, patient.weightKg);
   const now = new Date();
 
@@ -76,20 +79,13 @@ export const buildPatientData = (req: DiagnosisRequest): string => {
   if (patient.gender === 'female' && patient.age >= 10) {
     lines.push(`Pregnancy / breastfeeding: ${PREGNANCY_LABELS[patient.pregnancy]}`);
   }
-  // The app does not ask for medical history: empty means unknown, not "none"
+  // The app does not collect medical history up front: unknown, not "none"
   lines.push(
-    `Known medical conditions: ${patient.conditions.length ? patient.conditions.map(clean).join(', ') : 'not asked (unknown)'}`,
-    `Current medicines: ${clean(patient.medications) || 'not asked (unknown)'}`,
-    `Allergies: ${clean(patient.allergies) || 'not asked (unknown)'}`
+    'Known medical conditions, current medicines, allergies: not collected up front (unknown unless mentioned below)',
+    'Location: India'
   );
-  if (patient.smoking || patient.alcohol) {
-    lines.push(`Lifestyle: smoking ${patient.smoking ?? 'not stated'}, alcohol ${patient.alcohol ?? 'not stated'}`);
-  }
-  if (patient.location) {
-    lines.push(`Location: ${clean(patient.location)}`);
-  }
 
-  lines.push('', "Patient's description of the problem, in their own words:", clean(problem));
+  lines.push('', contentLabel, clean(content));
 
   return `<patient_data>\n${lines.join('\n')}\n</patient_data>`;
 };

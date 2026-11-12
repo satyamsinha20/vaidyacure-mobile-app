@@ -1,9 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import cloudinary, { CLOUDINARY_FOLDER } from '@/lib/cloudinary';
+import { APP_CONFIG } from '@/lib/constants';
 
 export const runtime = 'nodejs';
 
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
+/**
+ * The middleware only checks that a session cookie exists; this verifies the
+ * token with the backend so a forged cookie cannot upload to Cloudinary.
+ */
+async function verifyEditorSession(request: NextRequest): Promise<boolean> {
+  const token = request.cookies.get(APP_CONFIG.COOKIE_TOKEN_KEY)?.value;
+  if (!token) return false;
+  try {
+    const res = await fetch(`${APP_CONFIG.API_BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return false;
+    const body = await res.json();
+    const role = body?.admin?.role ?? body?.data?.role ?? body?.user?.role;
+    return Boolean(role) && role !== 'viewer';
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
+  if (!(await verifyEditorSession(request))) {
+    return NextResponse.json({ success: false, error: 'Not authorised to upload images.' }, { status: 401 });
+  }
+
   try {
     // 1. Verify Cloudinary credentials in .env
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
@@ -32,12 +61,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate mime type
-    if (!file.type.startsWith('image/')) {
+    // Validate type (no SVG: it can carry scripts) and size
+    if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json(
-        { success: false, error: 'Uploaded file must be a valid image (PNG, JPG, WEBP, etc).' },
+        { success: false, error: 'Uploaded file must be a PNG, JPG, WEBP or GIF image.' },
         { status: 400 }
       );
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ success: false, error: 'Image must be smaller than 5 MB.' }, { status: 400 });
     }
 
     // 3. Convert file to base64 Data URI
@@ -60,12 +92,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Cloudinary upload error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error.message || 'Failed to upload image to Cloudinary.',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to upload image. Please try again.' }, { status: 500 });
   }
 }
