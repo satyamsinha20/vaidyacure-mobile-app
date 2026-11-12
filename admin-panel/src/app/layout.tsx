@@ -3,8 +3,8 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 
 const montserrat = Montserrat({
+  // Variable font: one file covers every weight used (300-900) instead of six downloads
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
   variable: "--font-montserrat",
   display: "swap",
 });

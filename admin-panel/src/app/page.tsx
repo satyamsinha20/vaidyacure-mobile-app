@@ -21,23 +21,6 @@ function parseJwtRoleAndEmail(token?: string): { role?: string; email?: string }
   return {};
 }
 
-async function getLiveUserCount(token?: string): Promise<number> {
-  try {
-    const baseUrl = APP_CONFIG.API_BASE_URL || "http://localhost:5000/api";
-    const res = await fetch(`${baseUrl}/users/count`, {
-      cache: "no-store",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (typeof data.totalUsers === "number") return data.totalUsers;
-    }
-  } catch (e) {
-    console.error("Failed to fetch live user count on SSR:", e);
-  }
-  return 2;
-}
-
 export default async function DashboardPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get(APP_CONFIG.COOKIE_TOKEN_KEY)?.value;
@@ -76,13 +59,11 @@ export default async function DashboardPage() {
     isSuperAdmin = true;
   }
 
-  const liveTotalUsers = await getLiveUserCount(token);
 
   return (
     <DashboardClient
       initialUser={initialUser}
       initialIsSuperAdmin={isSuperAdmin}
-      initialTotalUsers={liveTotalUsers}
     />
   );
 }

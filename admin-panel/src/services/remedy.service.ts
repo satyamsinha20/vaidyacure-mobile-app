@@ -22,7 +22,11 @@ export const remedyService = {
 
     // 1. Try to fetch from MongoDB Backend API
     try {
-      const res = await fetch(`${API_BASE}/remedies?category=${encodeURIComponent(category.toLowerCase())}`);
+      // fresh=1: the backend skips the CDN cache, so admins always see their latest edits
+      const res = await fetch(`${API_BASE}/remedies?category=${encodeURIComponent(category.toLowerCase())}&fresh=1`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.status === "success" && Array.isArray(json.data)) {

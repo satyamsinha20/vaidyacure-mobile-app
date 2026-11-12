@@ -11,7 +11,8 @@ export const connectDB = async (): Promise<typeof mongoose> => {
     const mongoURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vaidyacure';
 
     connectionPromise = mongoose
-      .connect(mongoURI, { serverSelectionTimeoutMS: 10000 })
+      // Small pool: each serverless instance handles few concurrent requests
+      .connect(mongoURI, { serverSelectionTimeoutMS: 10000, maxPoolSize: 10, minPoolSize: 1 })
       .then((conn) => {
         console.log(`🌿 MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
         return conn;

@@ -11,6 +11,7 @@ import userRoutes from './routes/user.routes.js';
 import remedyRoutes from './routes/remedy.routes.js';
 import consultRoutes from './routes/consult.routes.js';
 import aiAdminRoutes from './routes/aiAdmin.routes.js';
+import { serverTiming } from './middleware/cache.middleware.js';
 
 // Load environment configuration
 dotenv.config();
@@ -20,6 +21,7 @@ const app = express();
 
 // Vercel / proxies: trust the first proxy hop so req.ip is the real client
 app.set('trust proxy', 1);
+app.use(serverTiming);
 app.disable('x-powered-by');
 
 /* -------------------------------------------------------------------------- */

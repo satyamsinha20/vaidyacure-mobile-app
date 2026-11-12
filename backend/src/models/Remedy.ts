@@ -116,4 +116,7 @@ const RemedySchema = new Schema<IRemedy>(
   }
 );
 
+// Serves the list query (filter by category, newest first) straight from the index
+RemedySchema.index({ category: 1, createdAt: -1 });
+
 export const Remedy = mongoose.model<IRemedy>('Remedy', RemedySchema);

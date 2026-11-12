@@ -35,11 +35,34 @@ export const DEFAULT_ADMIN: AdminUser = {
   role: 'superadmin',
 };
 
+// One shared profile request per minute for the whole app (see getMe)
+const ME_CACHE_MS = 60_000;
+let meCache: { promise: Promise<AdminUser>; at: number } | null = null;
+
+const fetchMe = async (): Promise<AdminUser> => {
+  const data = await apiRequest<{ status: string; admin: AdminUser }>('/auth/me');
+  if (typeof window !== 'undefined' && data.admin) {
+    localStorage.setItem(APP_CONFIG.STORAGE_USER_KEY, JSON.stringify(data.admin));
+    Cookies.set(APP_CONFIG.STORAGE_USER_KEY, JSON.stringify(data.admin), {
+      expires: 7,
+      path: '/',
+      sameSite: 'lax',
+    });
+    Cookies.set('vaidya_admin_role', data.admin.role, {
+      expires: 7,
+      path: '/',
+      sameSite: 'lax',
+    });
+  }
+  return data.admin || DEFAULT_ADMIN;
+};
+
 export const authService = {
   /**
    * Log in admin with email and password
    */
   async login(email: string, password: string): Promise<LoginResponse> {
+    meCache = null;
     const data = await apiRequest<LoginResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -76,27 +99,27 @@ export const authService = {
    * Fetch current authenticated admin user from backend
    */
   async getMe(): Promise<AdminUser> {
-    const data = await apiRequest<{ status: string; admin: AdminUser }>('/auth/me');
-    if (typeof window !== 'undefined' && data.admin) {
-      localStorage.setItem(APP_CONFIG.STORAGE_USER_KEY, JSON.stringify(data.admin));
-      Cookies.set(APP_CONFIG.STORAGE_USER_KEY, JSON.stringify(data.admin), {
-        expires: 7,
-        path: '/',
-        sameSite: 'lax',
-      });
-      Cookies.set('vaidya_admin_role', data.admin.role, {
-        expires: 7,
-        path: '/',
-        sameSite: 'lax',
-      });
-    }
-    return data.admin || DEFAULT_ADMIN;
+    // TopNav, the page and its widgets all ask for the profile on every navigation:
+    // share one request (and its result for a minute) instead of firing 2-3 per page
+    if (meCache && Date.now() - meCache.at < ME_CACHE_MS) return meCache.promise;
+    const promise = fetchMe();
+    meCache = { promise, at: Date.now() };
+    promise.catch(() => {
+      meCache = null;
+    });
+    return promise;
+  },
+
+  /** Forget the cached profile (after login, logout or a profile change) */
+  clearProfileCache(): void {
+    meCache = null;
   },
 
   /**
    * Log out admin and clear session
    */
   async logout(): Promise<void> {
+    meCache = null;
     try {
       await apiRequest('/auth/logout', { method: 'POST' }).catch(() => {});
     } finally {
