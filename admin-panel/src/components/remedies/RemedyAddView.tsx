@@ -52,6 +52,8 @@ export default function RemedyAddView({ config }: RemedyAddViewProps) {
   const [lifespan, setLifespan] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<"Verified" | "Pending" | "Draft">("Draft");
+  // Edits to a live item notify app users only when ticked (new Verified items always notify)
+  const [notifyUsers, setNotifyUsers] = useState(false);
 
   // Dynamic Tags: Symptoms
   const [symptoms, setSymptoms] = useState<string[]>([]);
@@ -259,7 +261,7 @@ export default function RemedyAddView({ config }: RemedyAddViewProps) {
 
     try {
       if (isEditMode && editId) {
-        await remedyService.updateRemedy(editId, config.slug, remedyPayload);
+        await remedyService.updateRemedy(editId, config.slug, { ...remedyPayload, notifyUsers: status === "Verified" && notifyUsers });
       } else {
         await remedyService.createRemedy(config.slug, remedyPayload);
       }
@@ -788,6 +790,21 @@ export default function RemedyAddView({ config }: RemedyAddViewProps) {
                       ))}
                     </div>
                   </div>
+
+                  {/* Notify app users about this update (edit mode, live items) */}
+                  {isEditMode && status === "Verified" && (
+                    <label className="flex items-start gap-2 p-2 rounded-xl bg-emerald-50/60 border border-emerald-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={notifyUsers}
+                        onChange={(e) => setNotifyUsers(e.target.checked)}
+                        className="mt-0.5 accent-emerald-700"
+                      />
+                      <span className="text-[11px] text-emerald-900 leading-snug">
+                        <b>Notify app users</b> about this update. Leave unticked for small fixes like spelling.
+                      </span>
+                    </label>
+                  )}
 
                   {/* Additional Notes */}
                   <div>

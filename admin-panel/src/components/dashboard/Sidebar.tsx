@@ -9,6 +9,7 @@ import {
   Megaphone,
   BarChart3,
   MessageSquare,
+  Lightbulb,
 } from "lucide-react";
 import { authService, AdminUser } from "@/services/auth.service";
 
@@ -32,9 +33,10 @@ const remedyCategories = [
 
 const superAdminNavItems = [
   { name: "Users", icon: Users, href: "/manage-users" },
-  { name: "Marketing", icon: Megaphone, href: "#" },
+  { name: "Marketing", icon: Megaphone, href: "/marketing" },
+  { name: "Wellness Tips", icon: Lightbulb, href: "/wellness-tips" },
   { name: "Analytics", icon: BarChart3, href: "#" },
-  { name: "Feedback", icon: MessageSquare, href: "#" },
+  { name: "Feedback", icon: MessageSquare, href: "/feedback" },
 ];
 
 export default function Sidebar({ isOpen, onClose, adminUser }: SidebarProps) {

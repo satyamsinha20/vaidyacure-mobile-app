@@ -17,7 +17,12 @@ import {
   Stethoscope,
 } from "lucide-react";
 import { authService, AdminUser, DEFAULT_ADMIN } from "@/services/auth.service";
+import { contentService, FEEDBACK_COUNT_EVENT } from "@/services/content.service";
 import { ROUTES } from "@/lib/constants";
+
+// New-feedback count is shared across page changes and refreshed at most once a minute
+let feedbackCountCache: { value: number; at: number } | null = null;
+const FEEDBACK_COUNT_TTL_MS = 60_000;
 
 interface TopNavProps {
   onToggleSidebar: () => void;
@@ -30,7 +35,27 @@ export default function TopNav({ onToggleSidebar, adminUser }: TopNavProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
   const [clientUser, setClientUser] = useState<AdminUser | null>(null);
+  const [newFeedback, setNewFeedback] = useState(() => feedbackCountCache?.value ?? 0);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (feedbackCountCache && Date.now() - feedbackCountCache.at < FEEDBACK_COUNT_TTL_MS) return;
+    contentService
+      .feedbackSummary()
+      .then(({ newCount }) => {
+        feedbackCountCache = { value: newCount, at: Date.now() };
+        setNewFeedback(newCount);
+      })
+      .catch(() => {});
+    // The Feedback page announces the fresh count after every change
+    const onCount = (event: Event) => {
+      const value = (event as CustomEvent<number>).detail;
+      feedbackCountCache = { value, at: Date.now() };
+      setNewFeedback(value);
+    };
+    window.addEventListener(FEEDBACK_COUNT_EVENT, onCount);
+    return () => window.removeEventListener(FEEDBACK_COUNT_EVENT, onCount);
+  }, []);
 
   // Sync stored user safely and fetch fresh user in real time
   useEffect(() => {
@@ -151,12 +176,18 @@ export default function TopNav({ onToggleSidebar, adminUser }: TopNavProps) {
       {/* 3. Right: Notifications & Admin Profile Dropdown */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {/* Notification Bell with Badge */}
-        <button className="relative p-1.5 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer">
+        <Link
+          href="/feedback"
+          title={newFeedback ? `${newFeedback} new feedback` : "Feedback"}
+          className="relative p-1.5 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer"
+        >
           <Bell className="w-4 h-4" />
-          <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-rose-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
-            3
-          </span>
-        </button>
+          {newFeedback > 0 && (
+            <span className="absolute top-0 right-0 min-w-3.5 h-3.5 px-0.5 bg-rose-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
+              {newFeedback > 99 ? "99+" : newFeedback}
+            </span>
+          )}
+        </Link>
 
         {/* Admin Profile Pill */}
         <div className="relative" ref={dropdownRef}>

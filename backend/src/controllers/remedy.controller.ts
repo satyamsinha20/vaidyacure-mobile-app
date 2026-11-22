@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Remedy } from '../models/Remedy.js';
+import { notifyRemedyChange } from '../services/notifications.js';
 
 export const getRemedies = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -104,6 +105,8 @@ export const createRemedy = async (req: Request, res: Response): Promise<void> =
     });
 
     const obj = newRemedy.toObject();
+    // Live (Verified) items appear in the app's notification feed right away
+    if (obj.status === 'Verified') await notifyRemedyChange('added', obj);
     res.status(201).json({
       status: 'success',
       data: { ...obj, id: obj._id.toString() },
@@ -130,7 +133,9 @@ export const updateRemedy = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const updated = await Remedy.findByIdAndUpdate(id, { $set: req.body }, { new: true, runValidators: true });
+    // notifyUsers is a request flag from the admin form, not a stored field
+    const { notifyUsers, _id: _ignoredId, id: _ignoredPublicId, ...changes } = req.body ?? {};
+    const updated = await Remedy.findByIdAndUpdate(id, { $set: changes }, { new: true, runValidators: true });
 
     if (!updated) {
       res.status(404).json({
@@ -141,6 +146,12 @@ export const updateRemedy = async (req: Request, res: Response): Promise<void> =
     }
 
     const obj = updated.toObject();
+    // Going live counts as new; edits to live items notify only when the admin asks
+    if (obj.status === 'Verified' && remedy.status !== 'Verified') {
+      await notifyRemedyChange('added', obj);
+    } else if (obj.status === 'Verified' && notifyUsers === true) {
+      await notifyRemedyChange('updated', obj);
+    }
     res.json({
       status: 'success',
       data: { ...obj, id: obj._id.toString() },

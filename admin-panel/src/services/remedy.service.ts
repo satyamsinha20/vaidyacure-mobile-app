@@ -129,7 +129,11 @@ export const remedyService = {
   /**
    * Update an existing remedy in MongoDB and local cache
    */
-  async updateRemedy(id: string, category: string, remedyData: Partial<RemedyItem>): Promise<boolean> {
+  async updateRemedy(
+    id: string,
+    category: string,
+    remedyData: Partial<RemedyItem> & { notifyUsers?: boolean }
+  ): Promise<boolean> {
     const storageKey = `vaidya_remedies_items_${category.toLowerCase()}`;
 
     // 1. Try to update via MongoDB API

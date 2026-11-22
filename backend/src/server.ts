@@ -11,6 +11,8 @@ import userRoutes from './routes/user.routes.js';
 import remedyRoutes from './routes/remedy.routes.js';
 import consultRoutes from './routes/consult.routes.js';
 import aiAdminRoutes from './routes/aiAdmin.routes.js';
+import searchRoutes from './routes/search.routes.js';
+import { adminContentRouter, appContentRouter } from './routes/content.routes.js';
 import { serverTiming } from './middleware/cache.middleware.js';
 
 // Load environment configuration
@@ -62,7 +64,9 @@ app.use(
 );
 
 // Body parsers with small limits (largest legitimate body is a few KB)
-app.use(express.json({ limit: '50kb' }));
+const smallJson = express.json({ limit: '50kb' });
+// The photo search route parses its own (larger) body
+app.use((req, res, next) => (req.path === '/api/search/image' ? next() : smallJson(req, res, next)));
 app.use(express.urlencoded({ extended: false, limit: '50kb' }));
 
 // HTTP request logger (method, path, status, time - no bodies)
@@ -118,6 +122,15 @@ app.use('/api/consult', consultRoutes);
 // AI Doctor configuration (admin panel, super admin only)
 app.use('/api/admin/ai', aiAdminRoutes);
 
+// Mobile app content: feedback, home ads, daily tip, notifications
+app.use('/api/app', appContentRouter);
+
+// Admin panel: feedback, marketing ads, wellness tips
+app.use('/api/admin/content', adminContentRouter);
+
+// Health search (text + medicine photo)
+app.use('/api/search', searchRoutes);
+
 /* -------------------------------------------------------------------------- */
 /* ERROR HANDLING MIDDLEWARES                                                 */
 /* -------------------------------------------------------------------------- */
@@ -142,6 +155,8 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
         ? 'Invalid JSON body.'
         : status < 500
         ? err.message || 'Bad request.'
+        : !(err instanceof Error) && typeof err?.message === 'string'
+        ? err.message // deliberate errors like { status: 503, message } are safe to show
         : 'Internal Server Error',
   });
 });
