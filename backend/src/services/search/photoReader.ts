@@ -5,54 +5,72 @@ import { getAiSettings, getPhotoAiTargets } from '../ai/configStore.js';
 import { DAILY_TTL_MS, incrementCounter, readCounter, today } from '../rateLimit.js';
 import { sha256 } from '../../utils/secretBox.js';
 import { isUnsafeText } from './safety.js';
+import { cleanGenerics } from './medicineId.js';
 
 /**
- * Camera search: a small vision model reads the medicine name printed on a
- * strip, bottle or box. Only printed text is returned (no guessing), and
- * photos that are not health products return nothing. Results are cached per
- * photo, and new readings are limited per device, IP and day.
+ * Camera search: a small vision model reads what is printed on a medicine
+ * strip, bottle or box: the brand, the salt (generic names) and the strength.
+ * Only printed text is returned (no guessing), and photos that are not health
+ * products return nothing. Results are cached per photo, and new readings are
+ * limited per device, IP and day.
  */
+export interface PhotoReading {
+  brand: string;
+  generics: string[];
+  strength: string;
+  /** Brand first, then the generic names: what the app offers to search */
+  candidates: string[];
+}
+
 export type PhotoReadOutcome =
-  | { candidates: string[]; reason?: undefined }
-  | { candidates: []; reason: 'disabled' | 'limit' | 'unavailable' | 'not_found' };
+  | (PhotoReading & { reason?: undefined })
+  | (PhotoReading & { reason: 'disabled' | 'limit' | 'unavailable' | 'not_found' });
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PER_IP_PER_DAY = 60;
 const TIMEOUT_MS = 18_000; // two tries stay inside the app's 45 s wait
 
-const SYSTEM_PROMPT = `You read medicine and health product packaging from a photo for a health app's search.
-Return only this JSON: {"names": ["..."]}
+const SYSTEM_PROMPT = `You read medicine and health product packaging from a photo for a health app in India.
+Return only this JSON: {"brand": "", "generics": [], "strength": ""}
 Rules:
-- "names": up to 4 entries. First the product or brand name exactly as printed, with its strength if printed (for example "Dolo 650"). Then the generic or active ingredient names if printed (for example "Paracetamol").
-- Only text that is clearly visible in the photo. Never guess or complete a name you cannot read.
+- "brand": the product or brand name exactly as printed (for example "Pyregem" or "Dolo 650").
+- "generics": the active ingredient or salt names printed on the pack, without words like Tablets, IP, BP (for example ["Paracetamol"]).
+- "strength": the strength if printed (for example "650 mg").
+- Only text that is clearly visible in the photo. Never guess or complete a word you cannot read. Use "" or [] for anything not visible.
 - Health products only: allopathic medicines, ayurvedic, homeopathic, herbal, oils, flower remedies, supplements, first aid and wellness products.
-- If the photo is not such a product, or the name cannot be read, return {"names": []}.`;
+- If the photo is not such a product, or nothing can be read, return {"brand": "", "generics": [], "strength": ""}.`;
 
-const ResultSchema = z.object({ names: z.array(z.string()).max(8).default([]) });
+const ResultSchema = z.object({
+  brand: z.string().default(''),
+  generics: z.array(z.string()).max(8).default([]),
+  strength: z.string().default(''),
+});
 
-const cleanName = (name: string) =>
-  name
+const clean = (text: string, max: number) =>
+  text
     .replace(/[^\p{L}\p{N} .+\-/%()]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 60);
+    .slice(0, max);
 
-type Parsed = { kind: 'names'; names: string[] } | { kind: 'invalid' };
+const EMPTY: PhotoReading = { brand: '', generics: [], strength: '', candidates: [] };
 
-const parseNames = (text: string): Parsed => {
+type Parsed = { kind: 'reading'; reading: PhotoReading } | { kind: 'invalid' };
+
+const parseReading = (text: string): Parsed => {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return { kind: 'invalid' };
   try {
     const parsed = ResultSchema.safeParse(JSON.parse(text.slice(start, end + 1)));
     if (!parsed.success) return { kind: 'invalid' };
+    let brand = clean(parsed.data.brand, 60);
+    if (brand.length < 2 || !/\p{L}{2,}/u.test(brand) || isUnsafeText(brand)) brand = '';
+    const generics = cleanGenerics(parsed.data.generics);
+    const strength = clean(parsed.data.strength, 30);
     const seen = new Set<string>();
-    const names = parsed.data.names
-      .map(cleanName)
-      .filter((n) => n.length >= 3 && /\p{L}{2,}/u.test(n) && !isUnsafeText(n))
-      .filter((n) => (seen.has(n.toLowerCase()) ? false : (seen.add(n.toLowerCase()), true)))
-      .slice(0, 4);
-    return { kind: 'names', names };
+    const candidates = [brand, ...generics].filter((c) => c && (seen.has(c.toLowerCase()) ? false : (seen.add(c.toLowerCase()), true)));
+    return { kind: 'reading', reading: { brand, generics, strength, candidates } };
   } catch {
     return { kind: 'invalid' };
   }
@@ -63,39 +81,39 @@ export const readMedicineNamesFromPhoto = async (
   mime: 'image/jpeg' | 'image/png',
   who: { deviceId?: string; ip: string }
 ): Promise<PhotoReadOutcome> => {
-  const cacheKey = `photo:v1:${sha256(image.toString('base64')).slice(0, 40)}`;
+  const cacheKey = `photo:v2:${sha256(image.toString('base64')).slice(0, 40)}`;
   const cached = await SearchCache.findOne({ key: cacheKey }).lean();
   if (cached) {
-    const names = (cached.result as { names?: string[] }).names ?? [];
-    return names.length ? { candidates: names } : { candidates: [], reason: 'not_found' };
+    const reading = (cached.result as { reading?: PhotoReading }).reading ?? EMPTY;
+    return reading.candidates.length ? reading : { ...reading, reason: 'not_found' };
   }
 
   const settings = await getAiSettings();
-  if (!settings.photoAiEnabled) return { candidates: [], reason: 'disabled' };
+  if (!settings.photoAiEnabled) return { ...EMPTY, reason: 'disabled' };
 
   const day = today();
-  if ((await readCounter(`photoai:global:${day}`)) >= settings.photoAiGlobalPerDay) return { candidates: [], reason: 'limit' };
+  if ((await readCounter(`photoai:global:${day}`)) >= settings.photoAiGlobalPerDay) return { ...EMPTY, reason: 'limit' };
   const [deviceCount, ipCount] = await Promise.all([
     who.deviceId ? incrementCounter(`photoai:device:${who.deviceId}:${day}`, DAILY_TTL_MS) : Promise.resolve(0),
     incrementCounter(`photoai:ip:${who.ip}:${day}`, DAILY_TTL_MS),
   ]);
-  if (deviceCount > settings.photoAiPerDevicePerDay || ipCount > PER_IP_PER_DAY) return { candidates: [], reason: 'limit' };
+  if (deviceCount > settings.photoAiPerDevicePerDay || ipCount > PER_IP_PER_DAY) return { ...EMPTY, reason: 'limit' };
 
   const targets = await getPhotoAiTargets();
-  if (!targets.length) return { candidates: [], reason: 'disabled' };
+  if (!targets.length) return { ...EMPTY, reason: 'disabled' };
 
   const messages: MultimodalChatMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
     {
       role: 'user',
       content: [
-        { type: 'text', text: 'Read the medicine or product name on this package.' },
+        { type: 'text', text: 'Read the brand, salt and strength printed on this package.' },
         { type: 'image_url', image_url: { url: `data:${mime};base64,${image.toString('base64')}` } },
       ],
     },
   ];
 
-  let lastNames: string[] | null = null;
+  let reading: PhotoReading | null = null;
   for (const target of targets) {
     try {
       await incrementCounter(`photoai:global:${day}`, DAILY_TTL_MS);
@@ -111,20 +129,20 @@ export const readMedicineNamesFromPhoto = async (
         `[photo-ai] model=${target.model} in=${result.usage?.prompt_tokens ?? '?'} out=${result.usage?.completion_tokens ?? '?'} ` +
           `cost=${result.usage?.cost ?? '?'} ms=${result.ms}`
       );
-      const parsed = parseNames(result.content);
+      const parsed = parseReading(result.content);
       if (parsed.kind === 'invalid') continue; // unreadable answer: try the fallback model
-      lastNames = parsed.names;
-      if (parsed.names.length) break; // found a name; an empty answer gets one more try on the fallback
+      reading = parsed.reading;
+      if (reading.candidates.length) break; // found something; an empty answer gets one more try on the fallback
     } catch (error) {
       console.error(`[photo-ai] ${target.model} failed:`, error instanceof Error ? error.message : error);
     }
   }
 
-  if (lastNames === null) return { candidates: [], reason: 'unavailable' };
+  if (!reading) return { ...EMPTY, reason: 'unavailable' };
   await SearchCache.updateOne(
     { key: cacheKey },
-    { $set: { result: { names: lastNames }, expiresAt: new Date(Date.now() + CACHE_TTL_MS) } },
+    { $set: { result: { reading }, expiresAt: new Date(Date.now() + CACHE_TTL_MS) } },
     { upsert: true }
   ).catch(() => {});
-  return lastNames.length ? { candidates: lastNames } : { candidates: [], reason: 'not_found' };
+  return reading.candidates.length ? reading : { ...reading, reason: 'not_found' };
 };

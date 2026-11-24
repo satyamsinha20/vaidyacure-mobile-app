@@ -8,7 +8,11 @@ import { DAILY_TTL_MS, getClientIp, getDeviceId, incrementCounter, today } from 
 const SearchQuery = z.object({
   q: z.string().trim().min(2, 'Please type at least 2 letters.').max(QUERY_MAX_LENGTH, 'Search is too long.'),
   mode: z.enum(['all', 'medicine']).default('all'),
+  // Salt printed on a photographed pack (camera search), e.g. "Paracetamol"
+  generic: z.string().trim().max(QUERY_MAX_LENGTH).optional(),
 });
+
+const whoIs = (req: Request) => ({ deviceId: getDeviceId(req), ip: getClientIp(req) });
 
 const overLimit = async (req: Request, kind: string, deviceLimit: number, ipLimit: number): Promise<boolean> => {
   const day = today();
@@ -35,7 +39,8 @@ export const search = async (req: Request, res: Response): Promise<void> => {
       res.status(429).json({ status: 'error', message: 'Too many searches today. Please try again tomorrow.' });
       return;
     }
-    res.json({ status: 'success', data: await runSearch(parsed.data.q, parsed.data.mode) });
+    const { q, mode, generic } = parsed.data;
+    res.json({ status: 'success', data: await runSearch(q, mode, { generic, who: whoIs(req) }) });
   } catch (error) {
     console.error('[search] error:', error instanceof Error ? error.message : error);
     res.status(500).json({ status: 'error', message: 'Search failed. Please try again.' });
@@ -59,9 +64,9 @@ export const searchAi = async (req: Request, res: Response): Promise<void> => {
       res.json({ status: 'success', data: { answer: null, reason: 'limit' } });
       return;
     }
-    const { q, mode } = parsed.data;
-    const results = await runSearch(q, mode);
-    const outcome = await getAiAnswer(results, mode, { deviceId: getDeviceId(req), ip: getClientIp(req) });
+    const { q, mode, generic } = parsed.data;
+    const results = await runSearch(q, mode, { generic, who: whoIs(req) });
+    const outcome = await getAiAnswer(results, mode, whoIs(req));
     // Only real answers are shared through the CDN; "no answer" may change on the next try
     res.set(
       'Cache-Control',
@@ -103,10 +108,7 @@ export const searchImage = async (req: Request, res: Response): Promise<void> =>
       res.status(400).json({ status: 'error', message: 'Please use a JPG or PNG photo.' });
       return;
     }
-    const outcome = await readMedicineNamesFromPhoto(buffer, isPng ? 'image/png' : 'image/jpeg', {
-      deviceId: getDeviceId(req),
-      ip: getClientIp(req),
-    });
+    const outcome = await readMedicineNamesFromPhoto(buffer, isPng ? 'image/png' : 'image/jpeg', whoIs(req));
     const messages: Record<string, string> = {
       not_found: 'Could not read a medicine name. Take a clear, close photo of the name on the strip or box.',
       limit: 'You have used photo search a lot today. Please type the medicine name instead.',
@@ -117,6 +119,9 @@ export const searchImage = async (req: Request, res: Response): Promise<void> =>
       status: 'success',
       data: {
         candidates: outcome.candidates,
+        brand: outcome.brand,
+        generics: outcome.generics,
+        strength: outcome.strength,
         message: outcome.candidates.length ? 'Tap the medicine name we read from your photo.' : messages[outcome.reason ?? 'not_found'],
       },
     });

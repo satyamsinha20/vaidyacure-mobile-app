@@ -59,6 +59,7 @@ const pickSettings = (doc: Partial<Record<keyof IAiSettings, any>> | null): AiSe
   searchAiFallbackModel: doc?.searchAiFallbackModel ?? DEFAULT_AI_SETTINGS.searchAiFallbackModel,
   searchAiPerDevicePerDay: doc?.searchAiPerDevicePerDay ?? DEFAULT_AI_SETTINGS.searchAiPerDevicePerDay,
   searchAiGlobalPerDay: doc?.searchAiGlobalPerDay ?? DEFAULT_AI_SETTINGS.searchAiGlobalPerDay,
+  medicineAiModel: doc?.medicineAiModel || DEFAULT_AI_SETTINGS.medicineAiModel,
   photoAiEnabled: doc?.photoAiEnabled ?? DEFAULT_AI_SETTINGS.photoAiEnabled,
   photoAiModel: doc?.photoAiModel || DEFAULT_AI_SETTINGS.photoAiModel,
   photoAiFallbackModel: doc?.photoAiFallbackModel ?? DEFAULT_AI_SETTINGS.photoAiFallbackModel,
@@ -185,6 +186,13 @@ export const getSearchAiTargets = async (): Promise<ModelTarget[]> => {
   const settings = await getAiSettings();
   if (!settings.searchAiEnabled) return [];
   return targetsOnFirstProvider([settings.searchAiModel, settings.searchAiFallbackModel]);
+};
+
+/** Models that work out a brand's salt: the medicine model, then the search fallback. Empty when search AI is off. */
+export const getMedicineAiTargets = async (): Promise<ModelTarget[]> => {
+  const settings = await getAiSettings();
+  if (!settings.searchAiEnabled) return [];
+  return targetsOnFirstProvider([settings.medicineAiModel, settings.searchAiFallbackModel]);
 };
 
 /** Models that read the medicine name from a camera photo: main, then fallback. Empty when switched off. */

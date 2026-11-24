@@ -16,6 +16,13 @@ export interface AiAnswer {
   summary: string;
   points: string[];
   seeDoctor: string;
+  /** Filled for medicine searches: what it is used for, how to take it, side effects and precautions */
+  medicine?: {
+    usedFor: string[];
+    howToTake: string;
+    sideEffects: string[];
+    precautions: string[];
+  };
 }
 
 export type AiAnswerOutcome =
@@ -27,6 +34,7 @@ const NO_ANSWER_TTL_MS = 6 * 60 * 60 * 1000;
 const PER_IP_PER_DAY = 150;
 const MAX_SOURCES = 6;
 const MAX_OUTPUT_TOKENS = 500;
+const MAX_MEDICINE_TOKENS = 800;
 const TIMEOUT_MS = 15_000;
 
 const SYSTEM_PROMPT = `You are the health search assistant inside VaidyaCure, an Indian health and remedies app.
@@ -40,6 +48,26 @@ Rules:
 - Plain words that a non-doctor understands. No markdown, no source numbers.
 Return only this JSON:
 {"summary": "2-3 sentences, at most 60 words", "points": ["2 to 4 short practical points, at most 16 words each"], "seeDoctor": "one sentence on when to see a doctor"}`;
+
+const MEDICINE_PROMPT = `You are the medicine information assistant inside VaidyaCure, an Indian health app.
+Explain the medicine the user searched for, using ONLY the numbered SOURCES and the identified ingredients given.
+Rules:
+- Use only facts found in the SOURCES. Do not add anything from memory. Leave a field empty if the SOURCES do not cover it.
+- The SOURCES may use the US name of an ingredient (acetaminophen is paracetamol). Use the name used in India.
+- Do not diagnose and do not prescribe. Mention a dose only if a SOURCE gives it, call it the label dose, and say to follow the doctor or the pack.
+- Language: reply in the language of the search. Hindi in Devanagari script: Hindi. Hindi in English letters (Hinglish): simple Hinglish. Otherwise: simple English.
+- Plain words that a non-doctor understands. No markdown, no source numbers.
+Return only this JSON:
+{"summary": "what this medicine is: brand, ingredient and type, at most 40 words", "usedFor": ["2 to 5 uses, at most 12 words each"], "howToTake": "one or two sentences", "sideEffects": ["up to 4 common side effects"], "precautions": ["up to 4 important precautions"], "seeDoctor": "one sentence on when to see a doctor"}`;
+
+const MedicineSchema = z.object({
+  summary: z.string().trim().max(700),
+  usedFor: z.array(z.string().trim().min(2).max(240)).max(6).default([]),
+  howToTake: z.string().trim().max(400).default(''),
+  sideEffects: z.array(z.string().trim().min(2).max(240)).max(6).default([]),
+  precautions: z.array(z.string().trim().min(2).max(240)).max(6).default([]),
+  seeDoctor: z.string().trim().max(300).default(''),
+});
 
 const AnswerSchema = z.object({
   summary: z.string().trim().max(700),
@@ -78,7 +106,7 @@ const buildSources = (search: SearchResponse, mode: 'all' | 'medicine'): string[
 
 type Parsed = { kind: 'answer'; answer: AiAnswer } | { kind: 'empty' } | { kind: 'invalid' };
 
-const parseAnswer = (text: string): Parsed => {
+const parseAnswer = (text: string, isMedicine: boolean): Parsed => {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return { kind: 'invalid' };
@@ -87,6 +115,28 @@ const parseAnswer = (text: string): Parsed => {
     json = JSON.parse(text.slice(start, end + 1));
   } catch {
     return { kind: 'invalid' };
+  }
+  if (isMedicine) {
+    const med = MedicineSchema.safeParse(json);
+    if (!med.success) return { kind: 'invalid' };
+    const m = med.data;
+    if (!m.summary) return { kind: 'empty' };
+    const allText = [m.summary, ...m.usedFor, m.howToTake, ...m.sideEffects, ...m.precautions, m.seeDoctor].join(' ');
+    if (isUnsafeText(allText)) return { kind: 'empty' };
+    return {
+      kind: 'answer',
+      answer: {
+        summary: m.summary,
+        points: m.usedFor.slice(0, 5),
+        seeDoctor: m.seeDoctor,
+        medicine: {
+          usedFor: m.usedFor.slice(0, 5),
+          howToTake: m.howToTake,
+          sideEffects: m.sideEffects.slice(0, 4),
+          precautions: m.precautions.slice(0, 4),
+        },
+      },
+    };
   }
   const result = AnswerSchema.safeParse(json);
   if (!result.success) return { kind: 'invalid' };
@@ -103,10 +153,13 @@ export const getAiAnswer = async (
   who: { deviceId?: string; ip: string }
 ): Promise<AiAnswerOutcome> => {
   if (search.blocked) return { answer: null, reason: 'blocked' };
-  const sources = buildSources(search, mode);
+  // A medicine search gets the medicine card (uses, how to take, side effects, precautions)
+  const isMedicine = Boolean(search.identified) || mode === 'medicine' || search.medicines.length > 0;
+  const sources = buildSources(search, isMedicine ? 'medicine' : mode);
   if (!sources.length) return { answer: null, reason: 'no_sources' };
 
-  const cacheKey = `ai:v1:${mode}:${search.query.toLowerCase()}`;
+  const generics = search.identified?.generics.join('+').toLowerCase() ?? '';
+  const cacheKey = `ai:v2:${mode}:${search.query.toLowerCase()}:${generics}`;
   const cached = await SearchCache.findOne({ key: cacheKey }).lean();
   if (cached) {
     const stored = cached.result as { answer: AiAnswer | null };
@@ -128,11 +181,18 @@ export const getAiAnswer = async (
   const targets = await getSearchAiTargets();
   if (!targets.length) return { answer: null, reason: 'disabled' };
 
+  const identified = search.identified
+    ? `\nIdentified medicine: ${search.identified.brand} = ${search.identified.generics.join(' + ')}${
+        search.identified.strength ? ` (${search.identified.strength})` : ''
+      } [${search.identified.source === 'label' ? 'printed on the photographed pack' : 'worked out from the brand name'}]`
+    : '';
   const messages: ChatMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: isMedicine ? MEDICINE_PROMPT : SYSTEM_PROMPT },
     {
       role: 'user',
-      content: `Search: "${search.query}"\nEnglish meaning: "${search.englishQuery}"\n\nSOURCES:\n${sources.map((s, i) => `[${i + 1}] ${s}`).join('\n')}`,
+      content: `Search: "${search.query}"\nEnglish meaning: "${search.englishQuery}"${identified}\n\nSOURCES:\n${sources
+        .map((s, i) => `[${i + 1}] ${s}`)
+        .join('\n')}`,
     },
   ];
 
@@ -142,7 +202,7 @@ export const getAiAnswer = async (
       const result = await createChatCompletion(target.creds, {
         model: target.model,
         messages,
-        maxTokens: MAX_OUTPUT_TOKENS,
+        maxTokens: isMedicine ? MAX_MEDICINE_TOKENS : MAX_OUTPUT_TOKENS,
         temperature: 0.2,
         timeoutMs: TIMEOUT_MS,
       });
@@ -151,7 +211,7 @@ export const getAiAnswer = async (
         `[search-ai] model=${target.model} in=${result.usage?.prompt_tokens ?? '?'} out=${result.usage?.completion_tokens ?? '?'} ` +
           `cost=${result.usage?.cost ?? '?'} ms=${result.ms}`
       );
-      const parsed = parseAnswer(result.content);
+      const parsed = parseAnswer(result.content, isMedicine);
       if (parsed.kind === 'invalid') continue; // try the fallback model
       const answer = parsed.kind === 'answer' ? parsed.answer : null;
       await SearchCache.updateOne(

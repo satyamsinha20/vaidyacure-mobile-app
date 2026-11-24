@@ -79,6 +79,8 @@ export interface AiSettings {
   searchAiFallbackModel: string;
   searchAiPerDevicePerDay: number;
   searchAiGlobalPerDay: number;
+  /** Works out the salt behind a medicine brand typed in search */
+  medicineAiModel: string;
   /** Reading the medicine name from a camera photo */
   photoAiEnabled: boolean;
   photoAiModel: string;

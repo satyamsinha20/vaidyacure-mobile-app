@@ -99,6 +99,12 @@ export default function SettingsTab({ settings, onSaved, notify }: Props) {
             onChange={(e) => setForm({ ...form, searchAiFallbackModel: e.target.value.trim() })}
           />
         </Field>
+        <Field
+          label="Brand → salt model"
+          hint="Finds the salt behind a brand name (Pyregem → Paracetamol): qwen/qwen3.7-flash, about ₹0.003 per brand, saved for 30 days."
+        >
+          <input className={inputClass} value={form.medicineAiModel} onChange={(e) => setForm({ ...form, medicineAiModel: e.target.value.trim() })} />
+        </Field>
         <Field label="New AI answers / device / day" hint="Saved answers don't count.">
           <input
             type="number"

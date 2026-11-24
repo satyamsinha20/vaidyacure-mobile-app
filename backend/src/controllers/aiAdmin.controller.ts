@@ -390,6 +390,7 @@ const SettingsSchema = z.object({
     .optional(),
   searchAiPerDevicePerDay: z.number().int().min(0).max(1000).optional(),
   searchAiGlobalPerDay: z.number().int().min(0).max(100000).optional(),
+  medicineAiModel: z.string().trim().min(3).max(120).regex(/^[\w.:/-]+$/, 'Invalid model id').optional(),
   photoAiEnabled: z.boolean().optional(),
   photoAiModel: z.string().trim().min(3).max(120).regex(/^[\w.:/-]+$/, 'Invalid model id').optional(),
   photoAiFallbackModel: z

@@ -2,6 +2,7 @@ import { SearchCache } from '../../models/SearchCache.js';
 import { checkQuerySafety, type SafetyVerdict } from './safety.js';
 import { toEnglishQuery } from './dictionary.js';
 import { searchLibrary, searchMedlinePlus, searchOpenFda, searchWikipedia, type ArticleResult, type MedicineResult } from './sources.js';
+import { identifiedFromLabel, identifyMedicine, type IdentifiedMedicine } from './medicineId.js';
 
 export interface SearchResponse {
   query: string;
@@ -10,8 +11,27 @@ export interface SearchResponse {
   library: unknown[];
   medicines: MedicineResult[];
   articles: ArticleResult[];
+  /** The salt behind a brand name (from the photo label, or worked out by AI) */
+  identified: IdentifiedMedicine | null;
   empty: boolean;
 }
+
+export interface SearchOptions {
+  /** Generic names printed on a photographed pack, e.g. "Paracetamol" */
+  generic?: string;
+  /** Needed to look up brand names with AI (spending limits are per device and IP) */
+  who?: { deviceId?: string; ip: string };
+}
+
+const dedupe = <T,>(items: T[], keyOf: (item: T) => string): T[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = keyOf(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 interface ExternalResults {
   medicines: MedicineResult[];
@@ -46,24 +66,53 @@ const getExternalResults = async (englishQuery: string, mode: 'all' | 'medicine'
   return result;
 };
 
-/** Health search: safety filter, then the library and free medical sources in parallel */
-export const runSearch = async (rawQuery: string, mode: 'all' | 'medicine'): Promise<SearchResponse> => {
+/**
+ * Health search: safety filter, then the library and free medical sources in parallel.
+ * A medicine brand (Pyregem, Dolo 650 …) is not in those sources, so its salt is found
+ * (photo label, or AI) and the salt is searched too.
+ */
+export const runSearch = async (rawQuery: string, mode: 'all' | 'medicine', options: SearchOptions = {}): Promise<SearchResponse> => {
   const query = rawQuery.replace(/\s+/g, ' ').trim().slice(0, QUERY_MAX_LENGTH);
   const englishQuery = (toEnglishQuery(query) || query).slice(0, QUERY_MAX_LENGTH);
+  const genericHint = (options.generic ?? '').replace(/\s+/g, ' ').trim().slice(0, QUERY_MAX_LENGTH);
 
-  const verdict = checkQuerySafety(`${query} ${englishQuery}`);
+  const verdict = checkQuerySafety(`${query} ${englishQuery} ${genericHint}`);
   if (!verdict.allowed) {
     const { allowed: _allowed, ...blocked } = verdict;
-    return { query, englishQuery, blocked, library: [], medicines: [], articles: [], empty: true };
+    return { query, englishQuery, blocked, library: [], medicines: [], articles: [], identified: null, empty: true };
   }
 
   const [library, external] = await Promise.all([searchLibrary([query, englishQuery]), getExternalResults(englishQuery, mode)]);
+
+  let identified: IdentifiedMedicine | null = null;
+  if (genericHint) {
+    identified = identifiedFromLabel(query, genericHint);
+  } else if (options.who && external.medicines.length === 0 && (mode === 'medicine' || library.length === 0)) {
+    identified = await identifyMedicine(query, options.who);
+  }
+
+  let medicines = external.medicines;
+  let articles = external.articles;
+  let libraryItems: unknown[] = library;
+  if (identified) {
+    const generics = identified.generics.slice(0, 2);
+    const [genericLibrary, ...genericExternal] = await Promise.all([
+      searchLibrary(generics),
+      ...generics.map((g) => getExternalResults((toEnglishQuery(g) || g).slice(0, QUERY_MAX_LENGTH), 'all')),
+    ]);
+    medicines = dedupe([...medicines, ...genericExternal.flatMap((r) => r.medicines)], (m) => m.name.toLowerCase()).slice(0, 4);
+    articles = dedupe([...articles, ...genericExternal.flatMap((r) => r.articles)], (a) => a.url || a.title).slice(0, 5);
+    libraryItems = dedupe([...library, ...genericLibrary], (d: any) => String(d.id)).slice(0, 8);
+  }
+
   return {
     query,
     englishQuery,
     blocked: null,
-    library,
-    ...external,
-    empty: library.length === 0 && external.medicines.length === 0 && external.articles.length === 0,
+    library: libraryItems,
+    medicines,
+    articles,
+    identified,
+    empty: libraryItems.length === 0 && medicines.length === 0 && articles.length === 0,
   };
 };

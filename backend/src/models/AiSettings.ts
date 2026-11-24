@@ -19,6 +19,8 @@ export interface IAiSettings extends Document {
   searchAiFallbackModel: string;
   searchAiPerDevicePerDay: number;
   searchAiGlobalPerDay: number;
+  /** Works out the salt (generic names) behind a medicine brand typed in search */
+  medicineAiModel: string;
   /** Reading the medicine name from a photo (camera search) */
   photoAiEnabled: boolean;
   photoAiModel: string;
@@ -45,6 +47,8 @@ export const DEFAULT_AI_SETTINGS = {
   searchAiFallbackModel: 'qwen/qwen3.7-flash',
   searchAiPerDevicePerDay: 40,
   searchAiGlobalPerDay: 3000,
+  // Knows Indian medicine brands well for its price (about ₹0.003 per brand, cached for 30 days)
+  medicineAiModel: 'qwen/qwen3.7-flash',
   // Cheapest models that read printed text from photos (about ₹0.002 and ₹0.008 per photo)
   photoAiEnabled: true,
   photoAiModel: 'google/gemma-3-4b-it',
@@ -71,6 +75,7 @@ const AiSettingsSchema = new Schema<IAiSettings>(
     searchAiFallbackModel: { type: String, default: DEFAULT_AI_SETTINGS.searchAiFallbackModel, trim: true, maxlength: 120 },
     searchAiPerDevicePerDay: { type: Number, default: DEFAULT_AI_SETTINGS.searchAiPerDevicePerDay, min: 0, max: 1000 },
     searchAiGlobalPerDay: { type: Number, default: DEFAULT_AI_SETTINGS.searchAiGlobalPerDay, min: 0, max: 100000 },
+    medicineAiModel: { type: String, default: DEFAULT_AI_SETTINGS.medicineAiModel, trim: true, maxlength: 120 },
     photoAiEnabled: { type: Boolean, default: DEFAULT_AI_SETTINGS.photoAiEnabled },
     photoAiModel: { type: String, default: DEFAULT_AI_SETTINGS.photoAiModel, trim: true, maxlength: 120 },
     photoAiFallbackModel: { type: String, default: DEFAULT_AI_SETTINGS.photoAiFallbackModel, trim: true, maxlength: 120 },
