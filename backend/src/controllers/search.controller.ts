@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { runSearch, QUERY_MAX_LENGTH } from '../services/search/searchService.js';
 import { getAiAnswer } from '../services/search/aiAnswer.js';
 import { readMedicineNamesFromPhoto } from '../services/search/photoReader.js';
+import { searchWeb } from '../services/search/webSearch.js';
 import { DAILY_TTL_MS, getClientIp, getDeviceId, incrementCounter, today } from '../services/rateLimit.js';
 
 const SearchQuery = z.object({
@@ -66,7 +67,9 @@ export const searchAi = async (req: Request, res: Response): Promise<void> => {
     }
     const { q, mode, generic } = parsed.data;
     const results = await runSearch(q, mode, { generic, who: whoIs(req) });
-    const outcome = await getAiAnswer(results, mode, whoIs(req));
+    // Internet results (usually already cached by /search/web) are sources for the summary too
+    const web = results.blocked ? null : (await searchWeb(q, whoIs(req))).data;
+    const outcome = await getAiAnswer(results, mode, whoIs(req), web);
     // Only real answers are shared through the CDN; "no answer" may change on the next try
     res.set(
       'Cache-Control',
@@ -77,6 +80,42 @@ export const searchAi = async (req: Request, res: Response): Promise<void> => {
     console.error('[search] ai error:', error instanceof Error ? error.message : error);
     res.set('Cache-Control', 'no-store');
     res.json({ status: 'success', data: { answer: null, reason: 'unavailable' } });
+  }
+};
+
+/**
+ * @route GET /api/search/web?q=
+ * @access Public (mobile app). Google results through Serper: health results only,
+ * trusted health and pharmacy sites first. Cached per query; limited per device, IP and day.
+ */
+export const searchWebResults = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parsed = SearchQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid search.' });
+      return;
+    }
+    if (await overLimit(req, 'web-req', 200, 800)) {
+      res.set('Cache-Control', 'no-store');
+      res.json({ status: 'success', data: { enabled: true, results: [], knowledge: null, reason: 'limit' } });
+      return;
+    }
+    const outcome = await searchWeb(parsed.data.q, whoIs(req));
+    const hasResults = Boolean(outcome.data && (outcome.data.results.length || outcome.data.knowledge));
+    res.set('Cache-Control', hasResults ? 'public, max-age=0, s-maxage=600, stale-while-revalidate=3600' : 'no-store');
+    res.json({
+      status: 'success',
+      data: {
+        enabled: outcome.reason !== 'disabled' && outcome.reason !== 'not_configured',
+        results: outcome.data?.results ?? [],
+        knowledge: outcome.data?.knowledge ?? null,
+        reason: outcome.reason ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('[search] web error:', error instanceof Error ? error.message : error);
+    res.set('Cache-Control', 'no-store');
+    res.json({ status: 'success', data: { enabled: true, results: [], knowledge: null, reason: 'unavailable' } });
   }
 };
 

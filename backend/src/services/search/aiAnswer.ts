@@ -5,6 +5,10 @@ import { getAiSettings, getSearchAiTargets } from '../ai/configStore.js';
 import { DAILY_TTL_MS, incrementCounter, readCounter, today } from '../rateLimit.js';
 import { isUnsafeText } from './safety.js';
 import type { SearchResponse } from './searchService.js';
+import type { WebSearchData } from './webSearch.js';
+
+// Words that show a web result is about a specific medicine product
+const MEDICINE_HINT = /\b(\d+\s?(mg|mcg|ml)|tablets?|capsules?|syrup|suspension|composition|salt|side effects|uses)\b/i;
 
 /**
  * A short AI answer shown above the search results. The model may only use
@@ -32,7 +36,7 @@ export type AiAnswerOutcome =
 const ANSWER_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const NO_ANSWER_TTL_MS = 6 * 60 * 60 * 1000;
 const PER_IP_PER_DAY = 150;
-const MAX_SOURCES = 6;
+const MAX_SOURCES = 8;
 const MAX_OUTPUT_TOKENS = 500;
 const MAX_MEDICINE_TOKENS = 800;
 const TIMEOUT_MS = 15_000;
@@ -81,7 +85,14 @@ const clip = (value: unknown, max: number): string => {
   return clean.length > max ? `${clean.slice(0, max)}…` : clean;
 };
 
-const buildSources = (search: SearchResponse, mode: 'all' | 'medicine'): string[] => {
+const buildSources = (search: SearchResponse, mode: 'all' | 'medicine', web: WebSearchData | null): string[] => {
+  const webSources = web
+    ? [
+        ...(web.knowledge ? [`${web.knowledge.source || 'Google'} – ${clip(web.knowledge.title, 80)}: ${clip(web.knowledge.description, 420)}`] : []),
+        ...web.results.slice(0, 5).map((r) => `${r.site} – ${clip(r.title, 110)}: ${clip(r.snippet, 320)}`),
+        ...web.questions.slice(0, 2).map((q) => `${clip(q.question, 110)} ${clip(q.snippet, 280)}`),
+      ]
+    : [];
   const articles = search.articles.map((a) => `${a.source} – ${clip(a.title, 80)}: ${clip(a.summary, 520)}`);
   const library = (search.library as any[]).slice(0, 3).map((item) => {
     const parts = [
@@ -100,7 +111,11 @@ const buildSources = (search: SearchResponse, mode: 'all' | 'medicine'): string[
     ].filter(Boolean);
     return `US FDA drug label – ${clip(m.name, 60)}${m.genericName ? ` (${clip(m.genericName, 60)})` : ''}: ${parts.join(' ')}`;
   });
-  const ordered = mode === 'medicine' ? [...medicines, ...library, ...articles] : [...articles, ...library, ...medicines];
+  // A brand search leans on the web (Indian pharmacy pages); a health topic on the medical references
+  const ordered =
+    mode === 'medicine'
+      ? [...webSources.slice(0, 4), ...medicines, ...library, ...articles, ...webSources.slice(4)]
+      : [...articles.slice(0, 2), ...webSources, ...articles.slice(2), ...library, ...medicines];
   return ordered.filter((s) => s.length > 40).slice(0, MAX_SOURCES);
 };
 
@@ -150,16 +165,24 @@ const parseAnswer = (text: string, isMedicine: boolean): Parsed => {
 export const getAiAnswer = async (
   search: SearchResponse,
   mode: 'all' | 'medicine',
-  who: { deviceId?: string; ip: string }
+  who: { deviceId?: string; ip: string },
+  web: WebSearchData | null = null
 ): Promise<AiAnswerOutcome> => {
   if (search.blocked) return { answer: null, reason: 'blocked' };
   // A medicine search gets the medicine card (uses, how to take, side effects, precautions)
-  const isMedicine = Boolean(search.identified) || mode === 'medicine' || search.medicines.length > 0;
-  const sources = buildSources(search, isMedicine ? 'medicine' : mode);
+  // A brand the free sources don't know (e.g. "Molrin 500") is recognised from its web results
+  const hasHealthTopic = search.articles.some((a) => a.source === 'MedlinePlus');
+  const webLooksLikeMedicine = (web?.results ?? []).filter((r) => MEDICINE_HINT.test(`${r.title} ${r.snippet}`)).length >= 2;
+  const isMedicine =
+    Boolean(search.identified) ||
+    mode === 'medicine' ||
+    search.medicines.length > 0 ||
+    (!hasHealthTopic && search.library.length === 0 && webLooksLikeMedicine);
+  const sources = buildSources(search, isMedicine ? 'medicine' : mode, web);
   if (!sources.length) return { answer: null, reason: 'no_sources' };
 
   const generics = search.identified?.generics.join('+').toLowerCase() ?? '';
-  const cacheKey = `ai:v2:${mode}:${search.query.toLowerCase()}:${generics}`;
+  const cacheKey = `ai:v3:${mode}:${search.query.toLowerCase()}:${generics}:${web ? 'web' : ''}`;
   const cached = await SearchCache.findOne({ key: cacheKey }).lean();
   if (cached) {
     const stored = cached.result as { answer: AiAnswer | null };

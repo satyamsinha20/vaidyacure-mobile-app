@@ -11,6 +11,8 @@ import { decryptSecret, encryptSecret, isEncryptionConfigured, secretHint } from
 import { createChatCompletion, listProviderModels, FatalProviderError } from '../services/ai/llmClient.js';
 import { ensureAiSeeded, getAiSettings, invalidateAiConfigCache } from '../services/ai/configStore.js';
 import { getClientIp } from '../services/rateLimit.js';
+import { DEFAULT_WEB_SEARCH, WebSearchSettings } from '../models/WebSearchSettings.js';
+import { testWebSearchKey, webSearchUsedToday } from '../services/search/webSearch.js';
 
 /* -------------------------------------------------------------------------- */
 /* HELPERS                                                                    */
@@ -431,4 +433,78 @@ export const listAudit = handle(async (_req, res) => {
       createdAt: l.createdAt,
     })),
   });
+});
+
+/* -------------------------------------------------------------------------- */
+/* INTERNET SEARCH (Google results through Serper.dev)                        */
+/* -------------------------------------------------------------------------- */
+const WebSearchSchema = z.object({
+  enabled: z.boolean(),
+  // A new key replaces the saved one; leave empty to keep the saved key
+  apiKey: z
+    .string()
+    .trim()
+    .max(200)
+    .regex(/^[\w-]*$/, 'The API key should contain only letters and numbers.')
+    .optional(),
+  removeKey: z.boolean().optional(),
+  perDevicePerDay: z.number().int().min(0).max(1000),
+  globalPerDay: z.number().int().min(0).max(100000),
+});
+
+const webSearchView = async () => {
+  const doc = await WebSearchSettings.findOne({ key: 'global' }).select('+apiKey').lean();
+  return {
+    enabled: doc?.enabled ?? DEFAULT_WEB_SEARCH.enabled,
+    hasKey: Boolean(doc?.apiKey),
+    keyHint: doc?.keyHint ?? '',
+    perDevicePerDay: doc?.perDevicePerDay ?? DEFAULT_WEB_SEARCH.perDevicePerDay,
+    globalPerDay: doc?.globalPerDay ?? DEFAULT_WEB_SEARCH.globalPerDay,
+    usedToday: await webSearchUsedToday(),
+  };
+};
+
+export const getWebSearchSettings = handle(async (_req, res) => {
+  res.json({ status: 'success', data: await webSearchView() });
+});
+
+export const updateWebSearchSettings = handle(async (req, res) => {
+  const input = parse(WebSearchSchema, req.body);
+  const newKey = input.apiKey?.trim() ?? '';
+  if (newKey && newKey.length < 16) throw new AdminInputError('That does not look like a full Serper API key.');
+  if (newKey && !isEncryptionConfigured()) {
+    return void fail(res, 500, 'CONFIG_ENCRYPTION_KEY is not set on the server, so the key cannot be stored safely.');
+  }
+  const $set: Record<string, unknown> = {
+    enabled: input.enabled,
+    perDevicePerDay: input.perDevicePerDay,
+    globalPerDay: input.globalPerDay,
+  };
+  if (newKey) {
+    $set.apiKey = encryptSecret(newKey);
+    $set.keyHint = secretHint(newKey);
+  } else if (input.removeKey) {
+    $set.apiKey = null;
+    $set.keyHint = '';
+  }
+  await WebSearchSettings.updateOne({ key: 'global' }, { $set }, { upsert: true });
+  await audit(
+    req,
+    'websearch.update',
+    'serper',
+    JSON.stringify({
+      enabled: input.enabled,
+      perDevicePerDay: input.perDevicePerDay,
+      globalPerDay: input.globalPerDay,
+      keyChanged: Boolean(newKey),
+      keyRemoved: Boolean(input.removeKey && !newKey),
+    })
+  );
+  res.json({ status: 'success', data: await webSearchView() });
+});
+
+export const testWebSearch = handle(async (req, res) => {
+  const result = await testWebSearchKey();
+  await audit(req, 'websearch.test', 'serper', result.ok ? 'ok' : result.message);
+  res.json({ status: 'success', data: result });
 });

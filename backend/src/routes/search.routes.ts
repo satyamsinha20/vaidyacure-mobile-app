@@ -1,6 +1,6 @@
 import express, { Router } from 'express';
 import { cdnCache } from '../middleware/cache.middleware.js';
-import { search, searchAi, searchImage } from '../controllers/search.controller.js';
+import { search, searchAi, searchImage, searchWebResults } from '../controllers/search.controller.js';
 
 const router = Router();
 
@@ -9,6 +9,9 @@ router.get('/', cdnCache(300, 3600), search);
 
 // AI answer for a search (sets its own cache headers: only real answers are cached)
 router.get('/ai', searchAi);
+
+// Internet results (Google through Serper; sets its own cache headers)
+router.get('/web', searchWebResults);
 
 // Photos need a larger body than the global 50 KB limit
 router.post('/image', express.json({ limit: '4mb' }), searchImage);

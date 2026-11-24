@@ -9,6 +9,9 @@ import {
   getProviderModels,
   getSettings,
   getStatus,
+  getWebSearchSettings,
+  testWebSearch,
+  updateWebSearchSettings,
   listAudit,
   listDoctors,
   listProviders,
@@ -41,6 +44,11 @@ router.post('/doctors/:id/test', testDoctor);
 
 router.get('/settings', getSettings);
 router.put('/settings', updateSettings);
+
+// Internet search (Google results through Serper.dev)
+router.get('/web-search', getWebSearchSettings);
+router.put('/web-search', updateWebSearchSettings);
+router.post('/web-search/test', testWebSearch);
 
 router.get('/audit', listAudit);
 

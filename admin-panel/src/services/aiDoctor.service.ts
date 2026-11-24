@@ -161,4 +161,41 @@ export const aiDoctorService = {
   async audit() {
     return (await apiRequest<Envelope<AiAuditEntry[]>>(`${BASE}/audit`)).data;
   },
+
+  async getWebSearch() {
+    return (await apiRequest<Envelope<WebSearchSettings>>(`${BASE}/web-search`)).data;
+  },
+  async updateWebSearch(input: WebSearchInput) {
+    return (await apiRequest<Envelope<WebSearchSettings>>(`${BASE}/web-search`, json('PUT', input))).data;
+  },
+  async testWebSearch() {
+    return (await apiRequest<Envelope<WebSearchTestResult>>(`${BASE}/web-search/test`, { method: 'POST' })).data;
+  },
 };
+
+/** Internet search in the app (Google results through Serper.dev). The key itself is never sent back. */
+export interface WebSearchSettings {
+  enabled: boolean;
+  hasKey: boolean;
+  keyHint: string;
+  perDevicePerDay: number;
+  globalPerDay: number;
+  usedToday: number;
+}
+
+export interface WebSearchInput {
+  enabled: boolean;
+  /** A new key replaces the saved one; leave out to keep it */
+  apiKey?: string;
+  removeKey?: boolean;
+  perDevicePerDay: number;
+  globalPerDay: number;
+}
+
+export interface WebSearchTestResult {
+  ok: boolean;
+  message: string;
+  count?: number;
+  firstTitle?: string;
+  ms?: number;
+}

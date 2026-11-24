@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { aiDoctorService, AiSettings } from "@/services/aiDoctor.service";
 import { Field, Spinner, errorMessage, inputClass, primaryBtn } from "./ui";
+import WebSearchCard from "./WebSearchCard";
 
 interface Props {
   settings: AiSettings | null;
@@ -44,6 +45,7 @@ export default function SettingsTab({ settings, onSaved, notify }: Props) {
 
   return (
     <div className="space-y-4 max-w-3xl">
+      <WebSearchCard notify={notify} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {NUMBER_FIELDS.map((f) => (
           <Field key={f.key} label={f.label} hint={f.hint}>
