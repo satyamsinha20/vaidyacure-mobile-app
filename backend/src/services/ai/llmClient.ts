@@ -8,6 +8,14 @@ export interface ChatMessage {
   content: string;
 }
 
+/** A message that also carries an image (OpenAI-compatible "image_url" part, e.g. a data: URL) */
+export type ChatContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+
+export interface MultimodalChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string | ChatContentPart[];
+}
+
 export interface ProviderCredentials {
   baseUrl: string;
   apiKey: string;
@@ -43,7 +51,14 @@ const joinUrl = (baseUrl: string, path: string) => `${baseUrl.replace(/\/+$/, ''
 
 export const createChatCompletion = async (
   creds: ProviderCredentials,
-  options: { model: string; messages: ChatMessage[]; maxTokens: number; temperature?: number; json?: boolean; timeoutMs: number }
+  options: {
+    model: string;
+    messages: Array<ChatMessage | MultimodalChatMessage>;
+    maxTokens: number;
+    temperature?: number;
+    json?: boolean;
+    timeoutMs: number;
+  }
 ): Promise<CompletionResult> => {
   const started = Date.now();
   const controller = new AbortController();

@@ -79,6 +79,12 @@ export interface AiSettings {
   searchAiFallbackModel: string;
   searchAiPerDevicePerDay: number;
   searchAiGlobalPerDay: number;
+  /** Reading the medicine name from a camera photo */
+  photoAiEnabled: boolean;
+  photoAiModel: string;
+  photoAiFallbackModel: string;
+  photoAiPerDevicePerDay: number;
+  photoAiGlobalPerDay: number;
 }
 
 export interface AiAuditEntry {

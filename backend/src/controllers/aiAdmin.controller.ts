@@ -390,6 +390,16 @@ const SettingsSchema = z.object({
     .optional(),
   searchAiPerDevicePerDay: z.number().int().min(0).max(1000).optional(),
   searchAiGlobalPerDay: z.number().int().min(0).max(100000).optional(),
+  photoAiEnabled: z.boolean().optional(),
+  photoAiModel: z.string().trim().min(3).max(120).regex(/^[\w.:/-]+$/, 'Invalid model id').optional(),
+  photoAiFallbackModel: z
+    .string()
+    .trim()
+    .max(120)
+    .regex(/^[\w.:/-]*$/, 'Invalid model id')
+    .optional(),
+  photoAiPerDevicePerDay: z.number().int().min(0).max(500).optional(),
+  photoAiGlobalPerDay: z.number().int().min(0).max(100000).optional(),
 });
 
 export const getSettings = handle(async (_req, res) => {

@@ -120,6 +120,56 @@ export default function SettingsTab({ settings, onSaved, notify }: Props) {
           />
         </Field>
       </div>
+
+      <div className="pt-3 border-t border-gray-100">
+        <h3 className="text-xs font-black text-gray-800 uppercase tracking-wide">Photo search (camera)</h3>
+        <p className="text-[11px] text-gray-500 mt-0.5">
+          An AI model reads the medicine name printed on the photo. Only printed text is used, and the same photo again costs
+          nothing.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Photo search" hint="Turn it off to hide results from photos.">
+          <select
+            className={inputClass}
+            value={form.photoAiEnabled ? "on" : "off"}
+            onChange={(e) => setForm({ ...form, photoAiEnabled: e.target.value === "on" })}
+          >
+            <option value="on">On</option>
+            <option value="off">Off</option>
+          </select>
+        </Field>
+        <Field label="Model (must read images)" hint="Cheapest: google/gemma-3-4b-it (about ₹0.002 per photo).">
+          <input className={inputClass} value={form.photoAiModel} onChange={(e) => setForm({ ...form, photoAiModel: e.target.value.trim() })} />
+        </Field>
+        <Field label="Backup model" hint="Used if the main model can't read the name: qwen/qwen3.7-flash (about ₹0.008 per photo).">
+          <input
+            className={inputClass}
+            value={form.photoAiFallbackModel}
+            onChange={(e) => setForm({ ...form, photoAiFallbackModel: e.target.value.trim() })}
+          />
+        </Field>
+        <Field label="Photos / device / day" hint="Saved results don't count.">
+          <input
+            type="number"
+            min={0}
+            max={500}
+            className={inputClass}
+            value={form.photoAiPerDevicePerDay}
+            onChange={(e) => setForm({ ...form, photoAiPerDevicePerDay: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="Photos / day (all users)" hint="Safety cap for photo search spend. 1000 ≈ ₹10 a day at most.">
+          <input
+            type="number"
+            min={0}
+            max={100000}
+            className={inputClass}
+            value={form.photoAiGlobalPerDay}
+            onChange={(e) => setForm({ ...form, photoAiGlobalPerDay: Number(e.target.value) })}
+          />
+        </Field>
+      </div>
       <button type="button" className={primaryBtn} onClick={save} disabled={saving}>
         {saving && <Spinner />} Save settings
       </button>

@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { runSearch, QUERY_MAX_LENGTH } from '../services/search/searchService.js';
-import { readMedicineText } from '../services/search/ocr.js';
 import { getAiAnswer } from '../services/search/aiAnswer.js';
-import { isUnsafeText } from '../services/search/safety.js';
+import { readMedicineNamesFromPhoto } from '../services/search/photoReader.js';
 import { DAILY_TTL_MS, getClientIp, getDeviceId, incrementCounter, today } from '../services/rateLimit.js';
 
 const SearchQuery = z.object({
@@ -104,15 +103,21 @@ export const searchImage = async (req: Request, res: Response): Promise<void> =>
       res.status(400).json({ status: 'error', message: 'Please use a JPG or PNG photo.' });
       return;
     }
-    const { candidates } = await readMedicineText(buffer);
-    const safe = candidates.filter((c) => !isUnsafeText(c));
+    const outcome = await readMedicineNamesFromPhoto(buffer, isPng ? 'image/png' : 'image/jpeg', {
+      deviceId: getDeviceId(req),
+      ip: getClientIp(req),
+    });
+    const messages: Record<string, string> = {
+      not_found: 'Could not read a medicine name. Take a clear, close photo of the name on the strip or box.',
+      limit: 'You have used photo search a lot today. Please type the medicine name instead.',
+      disabled: 'Photo search is not available right now. Please type the medicine name.',
+      unavailable: 'Could not read the photo right now. Please try again or type the medicine name.',
+    };
     res.json({
       status: 'success',
       data: {
-        candidates: safe,
-        message: safe.length
-          ? 'Tap the medicine name we read from your photo.'
-          : 'Could not read a medicine name. Take a clear, close photo of the name on the strip or box.',
+        candidates: outcome.candidates,
+        message: outcome.candidates.length ? 'Tap the medicine name we read from your photo.' : messages[outcome.reason ?? 'not_found'],
       },
     });
   } catch (error) {

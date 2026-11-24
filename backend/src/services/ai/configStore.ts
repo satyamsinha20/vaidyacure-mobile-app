@@ -59,6 +59,11 @@ const pickSettings = (doc: Partial<Record<keyof IAiSettings, any>> | null): AiSe
   searchAiFallbackModel: doc?.searchAiFallbackModel ?? DEFAULT_AI_SETTINGS.searchAiFallbackModel,
   searchAiPerDevicePerDay: doc?.searchAiPerDevicePerDay ?? DEFAULT_AI_SETTINGS.searchAiPerDevicePerDay,
   searchAiGlobalPerDay: doc?.searchAiGlobalPerDay ?? DEFAULT_AI_SETTINGS.searchAiGlobalPerDay,
+  photoAiEnabled: doc?.photoAiEnabled ?? DEFAULT_AI_SETTINGS.photoAiEnabled,
+  photoAiModel: doc?.photoAiModel || DEFAULT_AI_SETTINGS.photoAiModel,
+  photoAiFallbackModel: doc?.photoAiFallbackModel ?? DEFAULT_AI_SETTINGS.photoAiFallbackModel,
+  photoAiPerDevicePerDay: doc?.photoAiPerDevicePerDay ?? DEFAULT_AI_SETTINGS.photoAiPerDevicePerDay,
+  photoAiGlobalPerDay: doc?.photoAiGlobalPerDay ?? DEFAULT_AI_SETTINGS.photoAiGlobalPerDay,
 });
 
 export const getAiSettings = async (): Promise<AiSettingsValues> => {
@@ -179,10 +184,21 @@ const loadTarget = async (providerId: unknown, model: string): Promise<ModelTarg
 export const getSearchAiTargets = async (): Promise<ModelTarget[]> => {
   const settings = await getAiSettings();
   if (!settings.searchAiEnabled) return [];
+  return targetsOnFirstProvider([settings.searchAiModel, settings.searchAiFallbackModel]);
+};
+
+/** Models that read the medicine name from a camera photo: main, then fallback. Empty when switched off. */
+export const getPhotoAiTargets = async (): Promise<ModelTarget[]> => {
+  const settings = await getAiSettings();
+  if (!settings.photoAiEnabled) return [];
+  return targetsOnFirstProvider([settings.photoAiModel, settings.photoAiFallbackModel]);
+};
+
+const targetsOnFirstProvider = async (modelIds: string[]): Promise<ModelTarget[]> => {
   const providers = await AiProvider.find({ isActive: true }).sort({ createdAt: 1 }).select('_id isActive expiresAt').lean();
   const provider = providers.find(providerUsable);
   if (!provider) return [];
-  const models = Array.from(new Set([settings.searchAiModel, settings.searchAiFallbackModel].filter(Boolean)));
+  const models = Array.from(new Set(modelIds.filter(Boolean)));
   const targets = await Promise.all(models.map((model) => loadTarget(provider._id, model)));
   return targets.filter((t): t is ModelTarget => t !== null);
 };

@@ -19,6 +19,12 @@ export interface IAiSettings extends Document {
   searchAiFallbackModel: string;
   searchAiPerDevicePerDay: number;
   searchAiGlobalPerDay: number;
+  /** Reading the medicine name from a photo (camera search) */
+  photoAiEnabled: boolean;
+  photoAiModel: string;
+  photoAiFallbackModel: string;
+  photoAiPerDevicePerDay: number;
+  photoAiGlobalPerDay: number;
   updatedAt: Date;
 }
 
@@ -39,6 +45,12 @@ export const DEFAULT_AI_SETTINGS = {
   searchAiFallbackModel: 'qwen/qwen3.7-flash',
   searchAiPerDevicePerDay: 40,
   searchAiGlobalPerDay: 3000,
+  // Cheapest models that read printed text from photos (about ₹0.002 and ₹0.008 per photo)
+  photoAiEnabled: true,
+  photoAiModel: 'google/gemma-3-4b-it',
+  photoAiFallbackModel: 'qwen/qwen3.7-flash',
+  photoAiPerDevicePerDay: 20,
+  photoAiGlobalPerDay: 1000,
 };
 
 const AiSettingsSchema = new Schema<IAiSettings>(
@@ -59,6 +71,11 @@ const AiSettingsSchema = new Schema<IAiSettings>(
     searchAiFallbackModel: { type: String, default: DEFAULT_AI_SETTINGS.searchAiFallbackModel, trim: true, maxlength: 120 },
     searchAiPerDevicePerDay: { type: Number, default: DEFAULT_AI_SETTINGS.searchAiPerDevicePerDay, min: 0, max: 1000 },
     searchAiGlobalPerDay: { type: Number, default: DEFAULT_AI_SETTINGS.searchAiGlobalPerDay, min: 0, max: 100000 },
+    photoAiEnabled: { type: Boolean, default: DEFAULT_AI_SETTINGS.photoAiEnabled },
+    photoAiModel: { type: String, default: DEFAULT_AI_SETTINGS.photoAiModel, trim: true, maxlength: 120 },
+    photoAiFallbackModel: { type: String, default: DEFAULT_AI_SETTINGS.photoAiFallbackModel, trim: true, maxlength: 120 },
+    photoAiPerDevicePerDay: { type: Number, default: DEFAULT_AI_SETTINGS.photoAiPerDevicePerDay, min: 0, max: 500 },
+    photoAiGlobalPerDay: { type: Number, default: DEFAULT_AI_SETTINGS.photoAiGlobalPerDay, min: 0, max: 100000 },
   },
   { timestamps: true }
 );
