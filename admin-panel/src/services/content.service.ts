@@ -36,13 +36,30 @@ export interface AdItem {
   startAt: string | null;
   endAt: string | null;
   isActive: boolean;
-  sortOrder: number;
+  /** Carousel slide 1-3 */
+  slot: number;
   impressions: number;
   clicks: number;
+  createdAt: string;
   updatedAt: string;
 }
 
-export type AdInput = Omit<AdItem, 'id' | 'impressions' | 'clicks' | 'updatedAt'>;
+export type AdInput = Omit<AdItem, 'id' | 'impressions' | 'clicks' | 'createdAt' | 'updatedAt'>;
+
+export type AdContactType = 'none' | 'phone' | 'whatsapp' | 'email';
+
+/** Shown on empty carousel slots so brands can get in touch */
+export interface AdContact {
+  contactType: AdContactType;
+  contactValue: string;
+}
+
+export interface AdsOverview {
+  items: AdItem[];
+  /** Id of the ad each slot is showing right now (index 0 = slot 1), or null when empty */
+  liveIds: (string | null)[];
+  contact: AdContact;
+}
 
 export interface WellnessTipItem {
   id: string;
@@ -86,7 +103,10 @@ export const contentService = {
   },
 
   async listAds() {
-    return (await apiRequest<Envelope<AdItem[]>>(`${BASE}/ads`)).data;
+    return (await apiRequest<Envelope<AdsOverview>>(`${BASE}/ads`)).data;
+  },
+  async saveAdContact(contact: AdContact) {
+    return (await apiRequest<Envelope<AdContact>>(`${BASE}/ads-settings`, json('PUT', contact))).data;
   },
   async createAd(input: AdInput) {
     return (await apiRequest<Envelope<AdItem>>(`${BASE}/ads`, json('POST', input))).data;

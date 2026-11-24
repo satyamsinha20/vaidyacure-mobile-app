@@ -77,7 +77,7 @@ export default function WellnessTipsPage() {
       else await contentService.createTip(input);
       setIsOpen(false);
       await load();
-      notify(editing ? "Tip updated. The app picks it up within 10 minutes." : "Tip added.");
+      notify(editing ? "Tip updated. Open apps show it within a few seconds." : "Tip added. Open apps show it within a few seconds.");
     } catch (error) {
       notify(errorMessage(error), "error");
     } finally {
@@ -159,11 +159,11 @@ export default function WellnessTipsPage() {
         </p>
         <p className="mt-1">
           A tip with a date shows on that date. On other days, the app shows one tip from the rotation list, a new one each day.
-          If there are no tips, the app shows its built-in tip.
+          If there is no tip for today, the app shows &quot;Daily tip unavailable&quot;.
         </p>
         {!loading && (
           <p className="mt-1.5 font-semibold">
-            Today ({today}): {todayTip ? `"${todayTip.text.slice(0, 90)}${todayTip.text.length > 90 ? "…" : ""}"` : "built-in app tip"}
+            Today ({today}): {todayTip ? `"${todayTip.text.slice(0, 90)}${todayTip.text.length > 90 ? "…" : ""}"` : "no tip (the app shows \"Daily tip unavailable\")"}
           </p>
         )}
       </div>

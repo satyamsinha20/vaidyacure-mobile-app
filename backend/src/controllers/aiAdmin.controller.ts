@@ -379,6 +379,17 @@ const SettingsSchema = z.object({
   globalConsultsPerDay: z.number().int().min(0).max(100000),
   paymentMode: z.enum(['test', 'disabled']),
   adsMode: z.enum(['test', 'disabled']),
+  // Search AI (optional so older admin screens can still save the other settings)
+  searchAiEnabled: z.boolean().optional(),
+  searchAiModel: z.string().trim().min(3).max(120).regex(/^[\w.:/-]+$/, 'Invalid model id').optional(),
+  searchAiFallbackModel: z
+    .string()
+    .trim()
+    .max(120)
+    .regex(/^[\w.:/-]*$/, 'Invalid model id')
+    .optional(),
+  searchAiPerDevicePerDay: z.number().int().min(0).max(1000).optional(),
+  searchAiGlobalPerDay: z.number().int().min(0).max(100000).optional(),
 });
 
 export const getSettings = handle(async (_req, res) => {

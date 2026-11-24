@@ -13,6 +13,12 @@ export interface IAiSettings extends Document {
   globalConsultsPerDay: number;
   paymentMode: 'test' | 'disabled';
   adsMode: 'test' | 'disabled';
+  /** Short AI answer on top of health search results */
+  searchAiEnabled: boolean;
+  searchAiModel: string;
+  searchAiFallbackModel: string;
+  searchAiPerDevicePerDay: number;
+  searchAiGlobalPerDay: number;
   updatedAt: Date;
 }
 
@@ -27,6 +33,12 @@ export const DEFAULT_AI_SETTINGS = {
   globalConsultsPerDay: 500,
   paymentMode: 'test' as const,
   adsMode: 'test' as const,
+  // Cheapest capable models on the gateway (about ₹0.004 and ₹0.011 per search answer)
+  searchAiEnabled: true,
+  searchAiModel: 'mistralai/mistral-nemo',
+  searchAiFallbackModel: 'qwen/qwen3.7-flash',
+  searchAiPerDevicePerDay: 40,
+  searchAiGlobalPerDay: 3000,
 };
 
 const AiSettingsSchema = new Schema<IAiSettings>(
@@ -42,6 +54,11 @@ const AiSettingsSchema = new Schema<IAiSettings>(
     globalConsultsPerDay: { type: Number, default: DEFAULT_AI_SETTINGS.globalConsultsPerDay, min: 0, max: 100000 },
     paymentMode: { type: String, enum: ['test', 'disabled'], default: 'test' },
     adsMode: { type: String, enum: ['test', 'disabled'], default: 'test' },
+    searchAiEnabled: { type: Boolean, default: DEFAULT_AI_SETTINGS.searchAiEnabled },
+    searchAiModel: { type: String, default: DEFAULT_AI_SETTINGS.searchAiModel, trim: true, maxlength: 120 },
+    searchAiFallbackModel: { type: String, default: DEFAULT_AI_SETTINGS.searchAiFallbackModel, trim: true, maxlength: 120 },
+    searchAiPerDevicePerDay: { type: Number, default: DEFAULT_AI_SETTINGS.searchAiPerDevicePerDay, min: 0, max: 1000 },
+    searchAiGlobalPerDay: { type: Number, default: DEFAULT_AI_SETTINGS.searchAiGlobalPerDay, min: 0, max: 100000 },
   },
   { timestamps: true }
 );

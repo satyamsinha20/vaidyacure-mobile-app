@@ -70,6 +70,56 @@ export default function SettingsTab({ settings, onSaved, notify }: Props) {
           </select>
         </Field>
       </div>
+
+      <div className="pt-3 border-t border-gray-100">
+        <h3 className="text-xs font-black text-gray-800 uppercase tracking-wide">Search AI</h3>
+        <p className="text-[11px] text-gray-500 mt-0.5">
+          A short AI answer above the app&apos;s search results, written only from the trusted sources the search found. Each
+          answer is saved for 3 days, so the same search again costs nothing.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="AI answer in search" hint="Turn it off to show only the normal results.">
+          <select
+            className={inputClass}
+            value={form.searchAiEnabled ? "on" : "off"}
+            onChange={(e) => setForm({ ...form, searchAiEnabled: e.target.value === "on" })}
+          >
+            <option value="on">On</option>
+            <option value="off">Off</option>
+          </select>
+        </Field>
+        <Field label="Model" hint="Cheapest: mistralai/mistral-nemo (about ₹0.004 per answer).">
+          <input className={inputClass} value={form.searchAiModel} onChange={(e) => setForm({ ...form, searchAiModel: e.target.value.trim() })} />
+        </Field>
+        <Field label="Backup model" hint="Used only if the main model fails: qwen/qwen3.7-flash (about ₹0.011 per answer).">
+          <input
+            className={inputClass}
+            value={form.searchAiFallbackModel}
+            onChange={(e) => setForm({ ...form, searchAiFallbackModel: e.target.value.trim() })}
+          />
+        </Field>
+        <Field label="New AI answers / device / day" hint="Saved answers don't count.">
+          <input
+            type="number"
+            min={0}
+            max={1000}
+            className={inputClass}
+            value={form.searchAiPerDevicePerDay}
+            onChange={(e) => setForm({ ...form, searchAiPerDevicePerDay: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="New AI answers / day (all users)" hint="Safety cap for search AI spend. 3000 ≈ ₹13 a day at most.">
+          <input
+            type="number"
+            min={0}
+            max={100000}
+            className={inputClass}
+            value={form.searchAiGlobalPerDay}
+            onChange={(e) => setForm({ ...form, searchAiGlobalPerDay: Number(e.target.value) })}
+          />
+        </Field>
+      </div>
       <button type="button" className={primaryBtn} onClick={save} disabled={saving}>
         {saving && <Spinner />} Save settings
       </button>

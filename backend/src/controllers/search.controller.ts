@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { runSearch, QUERY_MAX_LENGTH } from '../services/search/searchService.js';
 import { readMedicineText } from '../services/search/ocr.js';
+import { getAiAnswer } from '../services/search/aiAnswer.js';
 import { isUnsafeText } from '../services/search/safety.js';
 import { DAILY_TTL_MS, getClientIp, getDeviceId, incrementCounter, today } from '../services/rateLimit.js';
 
@@ -39,6 +40,39 @@ export const search = async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error('[search] error:', error instanceof Error ? error.message : error);
     res.status(500).json({ status: 'error', message: 'Search failed. Please try again.' });
+  }
+};
+
+/**
+ * @route GET /api/search/ai?q=&mode=all|medicine
+ * @access Public (mobile app). A short AI answer built only from the search's own sources.
+ * Answers are cached per query; new answers are limited per device, IP and day.
+ */
+export const searchAi = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parsed = SearchQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid search.' });
+      return;
+    }
+    if (await overLimit(req, 'searchai-req', 200, 800)) {
+      res.set('Cache-Control', 'no-store');
+      res.json({ status: 'success', data: { answer: null, reason: 'limit' } });
+      return;
+    }
+    const { q, mode } = parsed.data;
+    const results = await runSearch(q, mode);
+    const outcome = await getAiAnswer(results, mode, { deviceId: getDeviceId(req), ip: getClientIp(req) });
+    // Only real answers are shared through the CDN; "no answer" may change on the next try
+    res.set(
+      'Cache-Control',
+      outcome.answer ? 'public, max-age=0, s-maxage=600, stale-while-revalidate=3600' : 'no-store'
+    );
+    res.json({ status: 'success', data: { answer: outcome.answer, reason: outcome.reason ?? null } });
+  } catch (error) {
+    console.error('[search] ai error:', error instanceof Error ? error.message : error);
+    res.set('Cache-Control', 'no-store');
+    res.json({ status: 'success', data: { answer: null, reason: 'unavailable' } });
   }
 };
 

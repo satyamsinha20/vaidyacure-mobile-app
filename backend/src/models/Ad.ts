@@ -11,6 +11,8 @@ export interface IAd extends Document {
   startAt: Date | null;
   endAt: Date | null;
   isActive: boolean;
+  /** Which of the three carousel slides (1-3) shows this ad */
+  slot: number;
   sortOrder: number;
   impressions: number;
   clicks: number;
@@ -29,6 +31,7 @@ const AdSchema = new Schema<IAd>(
     startAt: { type: Date, default: null },
     endAt: { type: Date, default: null },
     isActive: { type: Boolean, default: true },
+    slot: { type: Number, enum: [1, 2, 3], default: 1 },
     sortOrder: { type: Number, default: 0 },
     impressions: { type: Number, default: 0 },
     clicks: { type: Number, default: 0 },
@@ -36,6 +39,6 @@ const AdSchema = new Schema<IAd>(
   { timestamps: true }
 );
 
-AdSchema.index({ isActive: 1, sortOrder: 1 });
+AdSchema.index({ isActive: 1, slot: 1, createdAt: -1 });
 
 export const Ad: Model<IAd> = mongoose.models.Ad || mongoose.model<IAd>('Ad', AdSchema);

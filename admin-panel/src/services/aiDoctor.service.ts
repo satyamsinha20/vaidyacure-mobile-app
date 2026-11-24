@@ -73,6 +73,12 @@ export interface AiSettings {
   globalConsultsPerDay: number;
   paymentMode: 'test' | 'disabled';
   adsMode: 'test' | 'disabled';
+  /** Short AI answer above health search results */
+  searchAiEnabled: boolean;
+  searchAiModel: string;
+  searchAiFallbackModel: string;
+  searchAiPerDevicePerDay: number;
+  searchAiGlobalPerDay: number;
 }
 
 export interface AiAuditEntry {

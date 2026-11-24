@@ -54,6 +54,11 @@ const pickSettings = (doc: Partial<Record<keyof IAiSettings, any>> | null): AiSe
   globalConsultsPerDay: doc?.globalConsultsPerDay ?? DEFAULT_AI_SETTINGS.globalConsultsPerDay,
   paymentMode: (doc?.paymentMode ?? DEFAULT_AI_SETTINGS.paymentMode) as AiSettingsValues['paymentMode'],
   adsMode: (doc?.adsMode ?? DEFAULT_AI_SETTINGS.adsMode) as AiSettingsValues['adsMode'],
+  searchAiEnabled: doc?.searchAiEnabled ?? DEFAULT_AI_SETTINGS.searchAiEnabled,
+  searchAiModel: doc?.searchAiModel || DEFAULT_AI_SETTINGS.searchAiModel,
+  searchAiFallbackModel: doc?.searchAiFallbackModel ?? DEFAULT_AI_SETTINGS.searchAiFallbackModel,
+  searchAiPerDevicePerDay: doc?.searchAiPerDevicePerDay ?? DEFAULT_AI_SETTINGS.searchAiPerDevicePerDay,
+  searchAiGlobalPerDay: doc?.searchAiGlobalPerDay ?? DEFAULT_AI_SETTINGS.searchAiGlobalPerDay,
 });
 
 export const getAiSettings = async (): Promise<AiSettingsValues> => {
@@ -165,6 +170,21 @@ const loadTarget = async (providerId: unknown, model: string): Promise<ModelTarg
     console.error('[ai] could not decrypt provider key (check CONFIG_ENCRYPTION_KEY)');
     return null;
   }
+};
+
+/**
+ * Models for AI answers in search: the configured (cheapest) model, then its
+ * fallback, on the first active provider. Empty when search AI is switched off.
+ */
+export const getSearchAiTargets = async (): Promise<ModelTarget[]> => {
+  const settings = await getAiSettings();
+  if (!settings.searchAiEnabled) return [];
+  const providers = await AiProvider.find({ isActive: true }).sort({ createdAt: 1 }).select('_id isActive expiresAt').lean();
+  const provider = providers.find(providerUsable);
+  if (!provider) return [];
+  const models = Array.from(new Set([settings.searchAiModel, settings.searchAiFallbackModel].filter(Boolean)));
+  const targets = await Promise.all(models.map((model) => loadTarget(provider._id, model)));
+  return targets.filter((t): t is ModelTarget => t !== null);
 };
 
 /** Everything needed to call the model behind a doctor (server-side only) */

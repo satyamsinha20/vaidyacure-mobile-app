@@ -79,7 +79,7 @@ export default function FeedbackPageView() {
   return (
     <AdminPageShell
       title="Feedback"
-      subtitle="What app users are saying. New feedback also shows on the bell icon."
+      subtitle="What app users are saying. Each phone and network can send one feedback per week. New feedback shows on the bell icon."
       toast={toast}
       onDismissToast={() => setToast(null)}
       actions={
