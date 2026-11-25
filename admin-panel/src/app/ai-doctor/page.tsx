@@ -93,7 +93,7 @@ export default function AiDoctorPage() {
     setAudit(a);
   }, []);
 
-  const freeCount = doctors.filter((d) => d.isActive && d.tier === "free").length;
+  const freeCount = doctors.filter((d) => d.isActive && (d.tier === "free" || d.tier === "library")).length;
   const premiumCount = doctors.filter((d) => d.isActive && d.tier === "premium").length;
 
   return (

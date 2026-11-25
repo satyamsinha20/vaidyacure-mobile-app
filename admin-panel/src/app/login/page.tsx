@@ -42,7 +42,7 @@ function LoginForm() {
   // Auto-redirect if already authenticated on client mount
   useEffect(() => {
     if (authService.isAuthenticated()) {
-      router.replace(ROUTES.DASHBOARD);
+      router.replace(authService.isDoctor() ? '/doctor' : ROUTES.DASHBOARD);
     }
   }, [router]);
 
@@ -52,12 +52,21 @@ function LoginForm() {
     setIsLoading(true);
 
     try {
-      await authService.login(email, password);
+      const data = await authService.login(email, password);
       setIsSuccess(true);
+      // Real doctors go to their own panel (first login: password and terms)
+      const target =
+        data.accountType === 'doctor'
+          ? data.doctor?.mustChangePassword || !data.doctor?.termsAccepted
+            ? '/doctor/setup'
+            : '/doctor'
+          : redirectPath.startsWith('/doctor')
+          ? ROUTES.DASHBOARD
+          : redirectPath;
 
       // Smooth transition to dashboard
       setTimeout(() => {
-        router.push(redirectPath);
+        router.push(target);
       }, 500);
     } catch (err: any) {
       setIsLoading(false);
@@ -88,7 +97,7 @@ function LoginForm() {
           </p>
 
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold tracking-wider uppercase border border-emerald-200/80 mt-2 shadow-2xs">
-            <span>Admin & Operations Portal</span>
+            <span>Admin, Operations & Doctor Portal</span>
           </div>
         </div>
 
@@ -124,16 +133,17 @@ function LoginForm() {
               {/* Email Input */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                  Email
+                  Email or Doctor ID
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
+                    autoComplete="username"
+                    placeholder="admin@… or DR1234"
                     className="w-full pl-10 pr-4 h-11 text-xs rounded-xl bg-gray-50/80 border border-gray-200 text-gray-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
                   />
                 </div>

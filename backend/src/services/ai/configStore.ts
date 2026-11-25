@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { AiProvider } from '../../models/AiProvider.js';
-import { AiDoctor, type IAiDoctor } from '../../models/AiDoctor.js';
+import { AiDoctor, type AiDoctorTier, type IAiDoctor } from '../../models/AiDoctor.js';
+import { EMPTY_AVAILABILITY, type IAvailability } from '../../models/availability.js';
 import { AiSettings, DEFAULT_AI_SETTINGS, type IAiSettings } from '../../models/AiSettings.js';
 import { decryptSecret, encryptSecret, isEncryptionConfigured, secretHint } from '../../utils/secretBox.js';
 import type { ProviderCredentials } from './llmClient.js';
@@ -20,8 +21,12 @@ export interface PublicDoctor {
   name: string;
   designation: string;
   about: string;
-  tier: 'free' | 'premium';
+  tier: AiDoctorTier;
   avatarColor: string;
+  /** null = the global consultation length */
+  consultMinutes: number | null;
+  alwaysAvailable: boolean;
+  availability: IAvailability;
 }
 
 export interface ModelTarget {
@@ -30,7 +35,10 @@ export interface ModelTarget {
 }
 
 export interface DoctorRuntime {
-  doctor: Pick<IAiDoctor, 'name' | 'designation' | 'tier'> & { id: string };
+  doctor: Pick<
+    IAiDoctor,
+    'name' | 'designation' | 'tier' | 'consultMinutes' | 'maxUserMessages' | 'alwaysAvailable' | 'availability' | 'slotCapacity'
+  > & { id: string };
   primary: ModelTarget;
   fallback: ModelTarget | null;
 }
@@ -43,16 +51,17 @@ export const invalidateAiConfigCache = (): void => {
   doctorsCache = null;
 };
 
-const pickSettings = (doc: Partial<Record<keyof IAiSettings, any>> | null): AiSettingsValues => ({
+const pickSettings = (doc: (Partial<Record<keyof IAiSettings, any>> & { premiumAdsRequired?: number }) | null): AiSettingsValues => ({
   premiumPriceInr: doc?.premiumPriceInr ?? DEFAULT_AI_SETTINGS.premiumPriceInr,
-  premiumAdsRequired: doc?.premiumAdsRequired ?? DEFAULT_AI_SETTINGS.premiumAdsRequired,
+  // Older settings documents stored this as premiumAdsRequired
+  adsRequired: doc?.adsRequired ?? doc?.premiumAdsRequired ?? DEFAULT_AI_SETTINGS.adsRequired,
   consultationSeconds: doc?.consultationSeconds ?? DEFAULT_AI_SETTINGS.consultationSeconds,
   maxUserMessages: doc?.maxUserMessages ?? DEFAULT_AI_SETTINGS.maxUserMessages,
   freeConsultsPerDevicePerDay: doc?.freeConsultsPerDevicePerDay ?? DEFAULT_AI_SETTINGS.freeConsultsPerDevicePerDay,
   premiumUnlocksPerDevicePerDay: doc?.premiumUnlocksPerDevicePerDay ?? DEFAULT_AI_SETTINGS.premiumUnlocksPerDevicePerDay,
   adUnlocksPerDevicePerDay: doc?.adUnlocksPerDevicePerDay ?? DEFAULT_AI_SETTINGS.adUnlocksPerDevicePerDay,
   globalConsultsPerDay: doc?.globalConsultsPerDay ?? DEFAULT_AI_SETTINGS.globalConsultsPerDay,
-  paymentMode: (doc?.paymentMode ?? DEFAULT_AI_SETTINGS.paymentMode) as AiSettingsValues['paymentMode'],
+  walletEnabled: doc?.walletEnabled ?? DEFAULT_AI_SETTINGS.walletEnabled,
   adsMode: (doc?.adsMode ?? DEFAULT_AI_SETTINGS.adsMode) as AiSettingsValues['adsMode'],
   searchAiEnabled: doc?.searchAiEnabled ?? DEFAULT_AI_SETTINGS.searchAiEnabled,
   searchAiModel: doc?.searchAiModel || DEFAULT_AI_SETTINGS.searchAiModel,
@@ -138,6 +147,50 @@ export const ensureAiSeeded = async (): Promise<void> => {
   return seedPromise;
 };
 
+let librarySeedPromise: Promise<void> | null = null;
+
+/**
+ * Creates the free "Library Doctor" once (it recommends only VaidyaCure
+ * library remedies). Uses the first working provider; the admin can change
+ * its model or turn it off, and a deleted one is not created again.
+ */
+export const ensureLibraryDoctor = async (): Promise<void> => {
+  if (!librarySeedPromise) {
+    librarySeedPromise = (async () => {
+      const settings = await AiSettings.findOne({ key: 'global' }).select('libraryDoctorSeeded').lean();
+      if (settings?.libraryDoctorSeeded) return;
+      const markDone = () => AiSettings.updateOne({ key: 'global' }, { $set: { libraryDoctorSeeded: true } }, { upsert: true });
+      if (await AiDoctor.exists({ tier: 'library' })) return void (await markDone());
+      const providers = await AiProvider.find({ isActive: true }).sort({ createdAt: 1 }).lean();
+      const provider = providers.find((p) => p.isActive && (!p.expiresAt || new Date(p.expiresAt).getTime() > Date.now()));
+      if (!provider) {
+        librarySeedPromise = null; // try again once a provider is added
+        return;
+      }
+      await AiDoctor.create({
+        name: 'Vaidya Library Doctor',
+        designation: 'VaidyaCure Library',
+        about: 'Free, no ads. Suggests only remedies and medicines from the VaidyaCure library.',
+        tier: 'library',
+        provider: provider._id,
+        modelId: DEFAULT_FREE_MODEL,
+        fallbackProvider: provider._id,
+        fallbackModel: 'qwen/qwen3.7-flash',
+        avatarColor: '#0E7490',
+        sortOrder: 0,
+        estimatedCostInr: 1.1,
+      });
+      await markDone();
+      invalidateAiConfigCache();
+      console.log('[ai] created the Library Doctor');
+    })().catch((error) => {
+      librarySeedPromise = null;
+      console.error('[ai] library doctor seeding failed:', error);
+    });
+  }
+  return librarySeedPromise;
+};
+
 /* -------------------------------------------------------------------------- */
 /* DOCTORS                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -148,6 +201,7 @@ const providerUsable = (p: { isActive?: boolean; expiresAt?: Date | null } | nul
 export const listPublicDoctors = async (): Promise<PublicDoctor[]> => {
   if (doctorsCache && Date.now() - doctorsCache.at < CACHE_MS) return doctorsCache.value;
   await ensureAiSeeded();
+  await ensureLibraryDoctor();
   const doctors = await AiDoctor.find({ isActive: true })
     .sort({ sortOrder: 1, createdAt: 1 })
     .populate<{ provider: { isActive: boolean; expiresAt: Date | null } }>('provider', 'isActive expiresAt')
@@ -161,6 +215,9 @@ export const listPublicDoctors = async (): Promise<PublicDoctor[]> => {
       about: d.about,
       tier: d.tier,
       avatarColor: d.avatarColor,
+      consultMinutes: d.consultMinutes ?? null,
+      alwaysAvailable: d.alwaysAvailable !== false,
+      availability: d.availability ?? EMPTY_AVAILABILITY,
     }));
   doctorsCache = { value, at: Date.now() };
   return value;
@@ -220,7 +277,17 @@ export const getDoctorRuntime = async (doctorId: string): Promise<DoctorRuntime 
   const fallback = await loadTarget(doctor.fallbackProvider, doctor.fallbackModel);
   if (!primary && !fallback) return null;
   return {
-    doctor: { id: String(doctor._id), name: doctor.name, designation: doctor.designation, tier: doctor.tier },
+    doctor: {
+      id: String(doctor._id),
+      name: doctor.name,
+      designation: doctor.designation,
+      tier: doctor.tier,
+      consultMinutes: doctor.consultMinutes ?? null,
+      maxUserMessages: doctor.maxUserMessages ?? null,
+      alwaysAvailable: doctor.alwaysAvailable !== false,
+      availability: doctor.availability ?? EMPTY_AVAILABILITY,
+      slotCapacity: doctor.slotCapacity ?? 20,
+    },
     primary: (primary ?? fallback)!,
     fallback: primary ? fallback : null,
   };

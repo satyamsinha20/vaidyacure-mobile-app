@@ -6,7 +6,8 @@ export interface AdminUser {
   id: string;
   name: string;
   email: string;
-  role: 'superadmin' | 'moderator' | 'editor' | 'viewer';
+  /** 'doctor' = a real doctor using the doctor panel (not an admin) */
+  role: 'superadmin' | 'moderator' | 'editor' | 'viewer' | 'doctor';
   lastLogin?: string;
   createdAt?: string;
 }
@@ -25,7 +26,9 @@ export interface LoginResponse {
   status: 'success';
   message: string;
   token: string;
+  accountType?: 'admin' | 'doctor';
   admin: AdminUser;
+  doctor?: { doctorCode: string; mustChangePassword: boolean; termsAccepted: boolean };
 }
 
 export const DEFAULT_ADMIN: AdminUser = {
@@ -95,10 +98,22 @@ export const authService = {
     return data;
   },
 
+  /** True when the logged-in account is a real doctor (doctor panel), from the stored login */
+  isDoctor(): boolean {
+    return Cookies.get('vaidya_admin_role') === 'doctor';
+  },
+
+  /** After a doctor changes the password the server issues a new token */
+  replaceToken(token: string): void {
+    Cookies.set(APP_CONFIG.COOKIE_TOKEN_KEY, token, { expires: 7, path: '/', sameSite: 'lax' });
+  },
+
   /**
    * Fetch current authenticated admin user from backend
    */
   async getMe(): Promise<AdminUser> {
+    // Doctors have no admin profile: use the stored login instead
+    if (this.isDoctor()) return this.getStoredUser();
     // TopNav, the page and its widgets all ask for the profile on every navigation:
     // share one request (and its result for a minute) instead of firing 2-3 per page
     if (meCache && Date.now() - meCache.at < ME_CACHE_MS) return meCache.promise;

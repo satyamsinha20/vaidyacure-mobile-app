@@ -16,7 +16,11 @@ export interface IConsultation extends Document {
   publicId: string;
   deviceId: string;
   doctor: Types.ObjectId;
-  tier: 'free' | 'premium';
+  tier: 'library' | 'free' | 'premium';
+  /** Logged-in patient (premium wallet chats and booked consultations) */
+  account: Types.ObjectId | null;
+  booking: Types.ObjectId | null;
+  unlock: 'none' | 'ads' | 'wallet' | 'booking';
   patient: {
     age: number;
     gender: 'male' | 'female' | 'other';
@@ -41,7 +45,10 @@ const ConsultationSchema = new Schema<IConsultation>({
   publicId: { type: String, required: true, unique: true },
   deviceId: { type: String, required: true, index: true },
   doctor: { type: Schema.Types.ObjectId, ref: 'AiDoctor', required: true },
-  tier: { type: String, enum: ['free', 'premium'], required: true },
+  tier: { type: String, enum: ['library', 'free', 'premium'], required: true },
+  account: { type: Schema.Types.ObjectId, ref: 'Patient', default: null },
+  booking: { type: Schema.Types.ObjectId, ref: 'Booking', default: null },
+  unlock: { type: String, enum: ['none', 'ads', 'wallet', 'booking'], default: 'none' },
   patient: {
     age: Number,
     gender: String,

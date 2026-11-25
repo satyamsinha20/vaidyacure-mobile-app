@@ -27,6 +27,8 @@ export interface ConsultReport {
   diet: AssessmentOutput['diet'];
   confidence: AssessmentOutput['confidence'];
   meta: { bmi: number; generatedAt: string };
+  /** Library Doctor: the VaidyaCure library items recommended in this report */
+  library?: Array<{ id: string; name: string; category: string }>;
 }
 
 const EMERGENCY_REMEDY_REASON = 'This needs emergency medical care. Do not self-medicate.';

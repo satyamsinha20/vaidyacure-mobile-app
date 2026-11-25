@@ -12,12 +12,12 @@ interface Props {
 }
 
 const NUMBER_FIELDS: Array<{ key: keyof AiSettings; label: string; hint: string; min: number; max: number }> = [
-  { key: "premiumPriceInr", label: "Premium price (₹)", hint: "Price of one premium consultation.", min: 1, max: 5000 },
-  { key: "premiumAdsRequired", label: "Ads to unlock premium", hint: "Rewarded ads needed for one premium consultation.", min: 1, max: 10 },
-  { key: "consultationSeconds", label: "Consultation length (seconds)", hint: "180 = 3 minutes of chat.", min: 60, max: 900 },
+  { key: "premiumPriceInr", label: "Premium chat price (₹, from wallet)", hint: "Taken from the patient's wallet for one premium AI consultation.", min: 1, max: 5000 },
+  { key: "adsRequired", label: "Ads to unlock a free AI doctor", hint: "The Library Doctor needs no ads.", min: 1, max: 10 },
+  { key: "consultationSeconds", label: "Default chat length (seconds)", hint: "180 = 3 minutes. Each doctor can have its own length.", min: 60, max: 900 },
   { key: "maxUserMessages", label: "Max patient messages", hint: "Per consultation; the report is generated after.", min: 2, max: 20 },
   { key: "freeConsultsPerDevicePerDay", label: "Free consultations / device / day", hint: "0 disables free doctors.", min: 0, max: 100 },
-  { key: "premiumUnlocksPerDevicePerDay", label: "Paid unlocks / device / day", hint: "Limit on premium purchases per device.", min: 0, max: 50 },
+  { key: "premiumUnlocksPerDevicePerDay", label: "Premium chats / patient / day", hint: "Safety limit on wallet chats per account.", min: 0, max: 50 },
   { key: "adUnlocksPerDevicePerDay", label: "Ad unlocks / device / day", hint: "Ads earn little, so keep this low.", min: 0, max: 50 },
   { key: "globalConsultsPerDay", label: "All consultations / day", hint: "Safety cap for your total AI spend.", min: 0, max: 100000 },
 ];
@@ -59,13 +59,13 @@ export default function SettingsTab({ settings, onSaved, notify }: Props) {
             />
           </Field>
         ))}
-        <Field label="Payments" hint="Test mode unlocks premium without real money (Razorpay / Play Billing not connected yet).">
-          <select className={inputClass} value={form.paymentMode} onChange={(e) => setForm({ ...form, paymentMode: e.target.value as AiSettings["paymentMode"] })}>
-            <option value="test">Test mode</option>
-            <option value="disabled">Disabled</option>
+        <Field label="Premium via wallet" hint="Patients add money by UPI (verified in Payments) and pay premium chats from the wallet.">
+          <select className={inputClass} value={form.walletEnabled ? "on" : "off"} onChange={(e) => setForm({ ...form, walletEnabled: e.target.value === "on" })}>
+            <option value="on">On</option>
+            <option value="off">Off</option>
           </select>
         </Field>
-        <Field label="Ads" hint="Test mode simulates ads (AdMob not connected yet).">
+        <Field label="Ads for free AI doctors" hint="Test mode simulates ads (AdMob needs a store build).">
           <select className={inputClass} value={form.adsMode} onChange={(e) => setForm({ ...form, adsMode: e.target.value as AiSettings["adsMode"] })}>
             <option value="test">Test mode</option>
             <option value="disabled">Disabled</option>

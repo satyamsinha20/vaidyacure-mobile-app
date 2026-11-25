@@ -12,6 +12,10 @@ import remedyRoutes from './routes/remedy.routes.js';
 import consultRoutes from './routes/consult.routes.js';
 import aiAdminRoutes from './routes/aiAdmin.routes.js';
 import searchRoutes from './routes/search.routes.js';
+import patientRoutes from './routes/patient.routes.js';
+import doctorPanelRoutes from './routes/doctorPanel.routes.js';
+import marketAdminRoutes from './routes/marketAdmin.routes.js';
+import { cronRouter, marketRouter } from './routes/market.routes.js';
 import { adminContentRouter, appContentRouter } from './routes/content.routes.js';
 import { serverTiming } from './middleware/cache.middleware.js';
 
@@ -131,6 +135,21 @@ app.use('/api/admin/content', adminContentRouter);
 // Health search (text + medicine photo)
 app.use('/api/search', searchRoutes);
 
+// Patient accounts (email OTP), wallet, bookings and real-doctor chat
+app.use('/api/patient', patientRoutes);
+
+// Real doctors patients can book, and booking rules
+app.use('/api/market', marketRouter);
+
+// Real doctors' own panel (doctor login only)
+app.use('/api/doctor', doctorPanelRoutes);
+
+// Admin: real doctors, payments, refunds, payouts, email, chat safety log
+app.use('/api/admin/market', marketAdminRoutes);
+
+// Time-based work (reminders, no-shows) for an external cron service
+app.use('/api/cron', cronRouter);
+
 /* -------------------------------------------------------------------------- */
 /* ERROR HANDLING MIDDLEWARES                                                 */
 /* -------------------------------------------------------------------------- */
@@ -164,10 +183,15 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 /* -------------------------------------------------------------------------- */
 /* SERVER STARTUP                                                             */
 /* -------------------------------------------------------------------------- */
-app.listen(ENV.PORT, () => {
-  console.log(`====================================================`);
-  console.log(`🚀 VaidyaCure Server running on http://localhost:${ENV.PORT}`);
-  console.log(`📡 Auth Endpoints: http://localhost:${ENV.PORT}/api/auth`);
-  console.log(`📡 Health Check:    http://localhost:${ENV.PORT}/api/health`);
-  console.log(`====================================================`);
-});
+// Tests import the app without opening a port
+if (ENV.NODE_ENV !== 'test') {
+  app.listen(ENV.PORT, () => {
+    console.log(`====================================================`);
+    console.log(`🚀 VaidyaCure Server running on http://localhost:${ENV.PORT}`);
+    console.log(`📡 Auth Endpoints: http://localhost:${ENV.PORT}/api/auth`);
+    console.log(`📡 Health Check:    http://localhost:${ENV.PORT}/api/health`);
+    console.log(`====================================================`);
+  });
+}
+
+export default app;

@@ -13,6 +13,8 @@ import { ensureAiSeeded, getAiSettings, invalidateAiConfigCache } from '../servi
 import { getClientIp } from '../services/rateLimit.js';
 import { DEFAULT_WEB_SEARCH, WebSearchSettings } from '../models/WebSearchSettings.js';
 import { testWebSearchKey, webSearchUsedToday } from '../services/search/webSearch.js';
+import { AvailabilityInputSchema, cleanAvailability } from '../services/marketplace/availability.js';
+import { EMPTY_AVAILABILITY } from '../models/availability.js';
 
 /* -------------------------------------------------------------------------- */
 /* HELPERS                                                                    */
@@ -262,7 +264,7 @@ const DoctorSchema = z.object({
   name: z.string().trim().min(2).max(60),
   designation: z.string().trim().min(2).max(60),
   about: z.string().trim().max(200).optional(),
-  tier: z.enum(['free', 'premium']),
+  tier: z.enum(['library', 'free', 'premium']),
   providerId: objectId,
   model: modelId,
   fallbackProviderId: objectId.nullable().optional(),
@@ -271,6 +273,12 @@ const DoctorSchema = z.object({
   isActive: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
   estimatedCostInr: z.number().min(0).max(1000).optional(),
+  /** null = use the global consultation length / message limit */
+  consultMinutes: z.number().int().min(1).max(30).nullable().optional(),
+  maxUserMessages: z.number().int().min(2).max(30).nullable().optional(),
+  alwaysAvailable: z.boolean().optional(),
+  availability: AvailabilityInputSchema.optional(),
+  slotCapacity: z.number().int().min(1).max(500).optional(),
 });
 
 const doctorView = (d: any) => ({
@@ -288,6 +296,11 @@ const doctorView = (d: any) => ({
   isActive: d.isActive,
   sortOrder: d.sortOrder,
   estimatedCostInr: d.estimatedCostInr,
+  consultMinutes: d.consultMinutes ?? null,
+  maxUserMessages: d.maxUserMessages ?? null,
+  alwaysAvailable: d.alwaysAvailable !== false,
+  availability: d.availability ?? EMPTY_AVAILABILITY,
+  slotCapacity: d.slotCapacity ?? 20,
   updatedAt: d.updatedAt,
 });
 
@@ -310,6 +323,11 @@ const doctorFields = async (input: z.infer<typeof DoctorSchema>) => {
     isActive: input.isActive ?? true,
     sortOrder: input.sortOrder ?? 0,
     estimatedCostInr: input.estimatedCostInr ?? 0,
+    consultMinutes: input.consultMinutes ?? null,
+    maxUserMessages: input.maxUserMessages ?? null,
+    alwaysAvailable: input.alwaysAvailable ?? true,
+    availability: input.availability ? cleanAvailability(input.availability) : EMPTY_AVAILABILITY,
+    slotCapacity: input.slotCapacity ?? 20,
   };
 };
 
@@ -372,14 +390,14 @@ export const testDoctor = handle(async (req, res) => {
 /* -------------------------------------------------------------------------- */
 const SettingsSchema = z.object({
   premiumPriceInr: z.number().int().min(1).max(5000),
-  premiumAdsRequired: z.number().int().min(1).max(10),
+  adsRequired: z.number().int().min(1).max(10),
   consultationSeconds: z.number().int().min(60).max(900),
   maxUserMessages: z.number().int().min(2).max(20),
   freeConsultsPerDevicePerDay: z.number().int().min(0).max(100),
   premiumUnlocksPerDevicePerDay: z.number().int().min(0).max(50),
   adUnlocksPerDevicePerDay: z.number().int().min(0).max(50),
   globalConsultsPerDay: z.number().int().min(0).max(100000),
-  paymentMode: z.enum(['test', 'disabled']),
+  walletEnabled: z.boolean(),
   adsMode: z.enum(['test', 'disabled']),
   // Search AI (optional so older admin screens can still save the other settings)
   searchAiEnabled: z.boolean().optional(),

@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import { Plus, Pencil, Trash2, PlugZap, RefreshCw } from "lucide-react";
-import { aiDoctorService, AiDoctor, AiDoctorInput, AiProvider } from "@/services/aiDoctor.service";
+import { aiDoctorService, AiDoctor, AiDoctorInput, AiProvider, AiTier } from "@/services/aiDoctor.service";
+import { WeeklyHoursEditor } from "@/components/market/ui";
 import { Field, Modal, Spinner, TierBadge, Toggle, dangerBtn, errorMessage, ghostBtn, inputClass, primaryBtn } from "./ui";
 
 interface Props {
@@ -25,7 +26,18 @@ const emptyForm = (providers: AiProvider[]): AiDoctorInput => ({
   isActive: true,
   sortOrder: 0,
   estimatedCostInr: 0,
+  consultMinutes: null,
+  maxUserMessages: null,
+  alwaysAvailable: true,
+  availability: { weekly: [], daysOff: [] },
+  slotCapacity: 20,
 });
+
+const TIER_HELP: Record<AiTier, string> = {
+  library: "Free, no ads. Recommends only remedies from the VaidyaCure library.",
+  free: "Free after watching ads (count set in Settings).",
+  premium: "Paid from the patient's wallet (price set in Settings).",
+};
 
 const initials = (name: string) =>
   name
@@ -68,6 +80,11 @@ export default function DoctorsTab({ doctors, providers, onChanged, notify }: Pr
       isActive: d.isActive,
       sortOrder: d.sortOrder,
       estimatedCostInr: d.estimatedCostInr,
+      consultMinutes: d.consultMinutes,
+      maxUserMessages: d.maxUserMessages,
+      alwaysAvailable: d.alwaysAvailable,
+      availability: d.availability ?? { weekly: [], daysOff: [] },
+      slotCapacity: d.slotCapacity ?? 20,
     });
     setModels([]);
     setIsOpen(true);
@@ -120,6 +137,11 @@ export default function DoctorsTab({ doctors, providers, onChanged, notify }: Pr
         isActive: !d.isActive,
         sortOrder: d.sortOrder,
         estimatedCostInr: d.estimatedCostInr,
+        consultMinutes: d.consultMinutes,
+        maxUserMessages: d.maxUserMessages,
+        alwaysAvailable: d.alwaysAvailable,
+        availability: d.availability ?? { weekly: [], daysOff: [] },
+        slotCapacity: d.slotCapacity ?? 20,
       });
       await onChanged();
     } catch (error) {
@@ -191,6 +213,8 @@ export default function DoctorsTab({ doctors, providers, onChanged, notify }: Pr
                 </p>
                 <p className="text-[10.5px] text-gray-500">
                   ~₹{d.estimatedCostInr} per consultation · order {d.sortOrder}
+                  {d.consultMinutes ? ` · ${d.consultMinutes} min` : ""}
+                  {d.alwaysAvailable ? " · any time" : ` · fixed hours (${d.availability?.weekly?.length ?? 0} ranges)`}
                   {d.fallbackModel ? ` · backup: ${d.fallbackModel}` : ""}
                 </p>
               </div>
@@ -242,14 +266,49 @@ export default function DoctorsTab({ doctors, providers, onChanged, notify }: Pr
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Plan">
-              <select className={inputClass} value={form.tier} onChange={(e) => set("tier", e.target.value as "free" | "premium")}>
-                <option value="free">Free</option>
-                <option value="premium">Premium</option>
+              <select className={inputClass} value={form.tier} onChange={(e) => set("tier", e.target.value as AiTier)}>
+                <option value="library">Library Doctor (free, no ads)</option>
+                <option value="free">Free (watch ads)</option>
+                <option value="premium">Premium (wallet)</option>
               </select>
+              <span className="block text-[10.5px] text-gray-500 mt-1">{TIER_HELP[form.tier]}</span>
             </Field>
             <Field label="Approx. cost per consultation (₹)">
               <input type="number" min={0} step={0.1} className={inputClass} value={form.estimatedCostInr} onChange={(e) => set("estimatedCostInr", Number(e.target.value))} />
             </Field>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Chat length (minutes)" hint="Empty = default from Settings">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                className={inputClass}
+                value={form.consultMinutes ?? ""}
+                onChange={(e) => set("consultMinutes", e.target.value ? Number(e.target.value) : null)}
+              />
+            </Field>
+            <Field label="Max patient messages" hint="Empty = default">
+              <input
+                type="number"
+                min={2}
+                max={30}
+                className={inputClass}
+                value={form.maxUserMessages ?? ""}
+                onChange={(e) => set("maxUserMessages", e.target.value ? Number(e.target.value) : null)}
+              />
+            </Field>
+            <Field label="Patients per slot" hint="For bookings">
+              <input type="number" min={1} max={500} className={inputClass} value={form.slotCapacity} onChange={(e) => set("slotCapacity", Number(e.target.value))} />
+            </Field>
+          </div>
+          <div className="p-3 rounded-xl border border-gray-200 space-y-2">
+            <Toggle
+              checked={form.alwaysAvailable}
+              onChange={(v) => set("alwaysAvailable", v)}
+              label={form.alwaysAvailable ? "Available any time" : "Available only in these hours (patients can book a time)"}
+            />
+            {!form.alwaysAvailable && <WeeklyHoursEditor value={form.availability} onChange={(v) => set("availability", v)} />}
           </div>
           <Field label="Provider">
             <select className={inputClass} value={form.providerId} onChange={(e) => { set("providerId", e.target.value); setModels([]); }}>

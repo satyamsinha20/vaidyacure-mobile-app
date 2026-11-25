@@ -79,11 +79,14 @@ export function Spinner({ className = "w-3.5 h-3.5" }: { className?: string }) {
   return <Loader2 className={`${className} animate-spin`} />;
 }
 
-export function TierBadge({ tier }: { tier: "free" | "premium" }) {
+export function TierBadge({ tier }: { tier: "library" | "free" | "premium" }) {
+  if (tier === "library") {
+    return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">Library · free</span>;
+  }
   return tier === "premium" ? (
     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Premium</span>
   ) : (
-    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Free</span>
+    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Free · ads</span>
   );
 }
 

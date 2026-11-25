@@ -12,7 +12,14 @@ export interface EncryptedSecret {
 }
 
 const ALGORITHM = 'aes-256-gcm';
-const AAD = Buffer.from('vaidyacure:ai-provider-key:v1');
+
+/**
+ * What a secret is for. It is bound into the ciphertext (AES-GCM additional
+ * data), so a value encrypted for one purpose cannot be swapped into another
+ * field and decrypted there.
+ */
+export type SecretPurpose = 'ai-provider-key' | 'email-password' | 'doctor-bank';
+const aadFor = (purpose: SecretPurpose) => Buffer.from(`vaidyacure:${purpose}:v1`);
 
 export class EncryptionNotConfiguredError extends Error {
   constructor() {
@@ -37,10 +44,10 @@ export const isEncryptionConfigured = (): boolean => {
   }
 };
 
-export const encryptSecret = (plainText: string): EncryptedSecret => {
+export const encryptSecret = (plainText: string, purpose: SecretPurpose = 'ai-provider-key'): EncryptedSecret => {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv(ALGORITHM, getMasterKey(), iv);
-  cipher.setAAD(AAD);
+  cipher.setAAD(aadFor(purpose));
   const data = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
   return {
     iv: iv.toString('base64'),
@@ -49,9 +56,9 @@ export const encryptSecret = (plainText: string): EncryptedSecret => {
   };
 };
 
-export const decryptSecret = (secret: EncryptedSecret): string => {
+export const decryptSecret = (secret: EncryptedSecret, purpose: SecretPurpose = 'ai-provider-key'): string => {
   const decipher = crypto.createDecipheriv(ALGORITHM, getMasterKey(), Buffer.from(secret.iv, 'base64'));
-  decipher.setAAD(AAD);
+  decipher.setAAD(aadFor(purpose));
   decipher.setAuthTag(Buffer.from(secret.tag, 'base64'));
   return Buffer.concat([decipher.update(Buffer.from(secret.data, 'base64')), decipher.final()]).toString('utf8');
 };
@@ -64,5 +71,11 @@ export const secretHint = (plainText: string): string => {
 };
 
 export const sha256 = (value: string): string => crypto.createHash('sha256').update(value).digest('hex');
+
+/** Constant-time comparison of two hex digests (avoids timing leaks on secret checks) */
+export const safeEqualHex = (a: string, b: string): boolean => {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length || a.length % 2 !== 0) return false;
+  return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
+};
 
 export const randomToken = (bytes = 24): string => crypto.randomBytes(bytes).toString('hex');

@@ -10,6 +10,12 @@ import {
   BarChart3,
   MessageSquare,
   Lightbulb,
+  Stethoscope,
+  BadgeIndianRupee,
+  Wallet,
+  TrendingUp,
+  ShieldAlert,
+  Bot,
 } from "lucide-react";
 import { authService, AdminUser } from "@/services/auth.service";
 
@@ -29,6 +35,16 @@ const remedyCategories = [
   "Supplements",
   "First Aid",
   "Wellness",
+];
+
+// Real doctors, money and safety (super admin only)
+const consultationNavItems = [
+  { name: "AI Doctor", icon: Bot, href: "/ai-doctor" },
+  { name: "Real Doctors", icon: Stethoscope, href: "/doctors" },
+  { name: "Payments", icon: Wallet, href: "/payments" },
+  { name: "Doctor Payouts", icon: BadgeIndianRupee, href: "/payouts" },
+  { name: "Earnings", icon: TrendingUp, href: "/earnings" },
+  { name: "Chat Safety Log", icon: ShieldAlert, href: "/chat-logs" },
 ];
 
 const superAdminNavItems = [
@@ -137,6 +153,32 @@ export default function Sidebar({ isOpen, onClose, adminUser }: SidebarProps) {
                       {category}
                     </Link>
                   </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Super Admin: doctors, payments and safety */}
+          {isSuperAdmin && (
+            <div className="pt-2.5 mt-2.5 border-t border-white/10 space-y-1">
+              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300/70">
+                Consultations
+              </div>
+              {consultationNavItems.map((item) => {
+                const Icon = item.icon;
+                const active = pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => onClose?.()}
+                    className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-left rounded-xl transition-all group ${
+                      active ? "bg-white/15 text-white font-semibold shadow-2xs" : "text-emerald-100/90 hover:text-white hover:bg-white/10 font-medium"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 text-emerald-200 group-hover:text-white transition-colors shrink-0" />
+                    <span className="text-[13px] tracking-tight">{item.name}</span>
+                  </Link>
                 );
               })}
             </div>

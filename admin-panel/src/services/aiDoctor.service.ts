@@ -1,4 +1,8 @@
 import { apiRequest } from '../lib/api';
+import type { Availability } from '@/components/market/ui';
+
+/** library: free, no ads, only VaidyaCure library remedies · free: unlocked by ads · premium: paid from the wallet */
+export type AiTier = 'library' | 'free' | 'premium';
 
 /* All endpoints are super-admin only; API keys are write-only (never returned). */
 
@@ -34,7 +38,7 @@ export interface AiDoctor {
   name: string;
   designation: string;
   about: string;
-  tier: 'free' | 'premium';
+  tier: AiTier;
   providerId: string | null;
   providerName: string | null;
   model: string;
@@ -44,6 +48,11 @@ export interface AiDoctor {
   isActive: boolean;
   sortOrder: number;
   estimatedCostInr: number;
+  consultMinutes: number | null;
+  maxUserMessages: number | null;
+  alwaysAvailable: boolean;
+  availability: Availability;
+  slotCapacity: number;
   updatedAt: string;
 }
 
@@ -51,7 +60,7 @@ export interface AiDoctorInput {
   name: string;
   designation: string;
   about: string;
-  tier: 'free' | 'premium';
+  tier: AiTier;
   providerId: string;
   model: string;
   fallbackProviderId: string | null;
@@ -60,18 +69,23 @@ export interface AiDoctorInput {
   isActive: boolean;
   sortOrder: number;
   estimatedCostInr: number;
+  consultMinutes: number | null;
+  maxUserMessages: number | null;
+  alwaysAvailable: boolean;
+  availability: Availability;
+  slotCapacity: number;
 }
 
 export interface AiSettings {
   premiumPriceInr: number;
-  premiumAdsRequired: number;
+  adsRequired: number;
   consultationSeconds: number;
   maxUserMessages: number;
   freeConsultsPerDevicePerDay: number;
   premiumUnlocksPerDevicePerDay: number;
   adUnlocksPerDevicePerDay: number;
   globalConsultsPerDay: number;
-  paymentMode: 'test' | 'disabled';
+  walletEnabled: boolean;
   adsMode: 'test' | 'disabled';
   /** Short AI answer above health search results */
   searchAiEnabled: boolean;

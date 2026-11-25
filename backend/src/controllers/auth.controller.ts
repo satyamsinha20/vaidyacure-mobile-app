@@ -1,13 +1,16 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { ENV, getJwtSecret, ServerConfigError } from '../config/constants.js';
 import { Admin } from '../models/Admin.js';
+import { Doctor } from '../models/Doctor.js';
+import { signDoctorToken } from '../services/doctor/auth.js';
 import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { getClientIp, incrementCounter } from '../services/rateLimit.js';
 
 // Helper to generate JWT
 const signToken = (id: string, email: string, role: string): string => {
-  return jwt.sign({ id, email, role }, getJwtSecret(), {
+  return jwt.sign({ id, email, role, typ: 'admin' }, getJwtSecret(), {
     algorithm: 'HS256',
     expiresIn: ENV.JWT_EXPIRES_IN as any,
   });
@@ -16,6 +19,39 @@ const signToken = (id: string, email: string, role: string): string => {
 // Brute-force protection: failed and successful attempts both count
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
+
+// Unknown accounts still pay for one bcrypt check, so response time does not reveal which emails exist
+let dummyHash: string | null = null;
+const burnPasswordCheck = async (password: string) => {
+  dummyHash ??= await bcrypt.hash('vaidyacure-dummy-password', 10);
+  await bcrypt.compare(password, dummyHash);
+};
+
+/**
+ * Real doctors use the same login page with their email or doctor ID (DR1234).
+ * They get a "doctor" token that admin routes never accept.
+ */
+const loginDoctor = async (identifier: string, password: string, res: Response): Promise<boolean> => {
+  const byCode = /^dr\d{4,6}$/i.test(identifier);
+  const doctor = await Doctor.findOne(byCode ? { doctorCode: identifier.toUpperCase() } : { email: identifier.toLowerCase() }).select('+password');
+  if (!doctor) return false;
+  if (!(await doctor.comparePassword(password))) return false;
+  if (!doctor.isActive) {
+    res.status(403).json({ status: 'error', message: 'Your doctor account is disabled. Please contact VaidyaCure.' });
+    return true;
+  }
+  doctor.lastLoginAt = new Date();
+  await doctor.save({ validateBeforeSave: false });
+  res.status(200).json({
+    status: 'success',
+    message: 'Authentication successful.',
+    token: signDoctorToken(doctor),
+    accountType: 'doctor',
+    admin: { id: doctor._id, name: doctor.name, email: doctor.email, role: 'doctor', lastLogin: doctor.lastLoginAt },
+    doctor: { doctorCode: doctor.doctorCode, mustChangePassword: doctor.mustChangePassword, termsAccepted: Boolean(doctor.termsAcceptedAt) },
+  });
+  return true;
+};
 
 /**
  * @desc    Authenticate Admin & generate JWT
@@ -51,7 +87,10 @@ export const loginAdmin = async (req: Request, res: Response): Promise<void> => 
     // Find admin by email and explicitly include password field
     const admin = await Admin.findOne({ email: email.toLowerCase().trim() }).select('+password');
 
-    if (!admin) {
+    if (!admin || !(await admin.comparePassword(password))) {
+      // Not an admin (or not the admin's password): it may be a doctor account
+      if (await loginDoctor(email.trim(), password, res)) return;
+      if (!admin) await burnPasswordCheck(password);
       res.status(401).json({
         status: 'error',
         message: 'Invalid email or password.',
@@ -68,15 +107,6 @@ export const loginAdmin = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Verify password match
-    const isMatch = await admin.comparePassword(password);
-    if (!isMatch) {
-      res.status(401).json({
-        status: 'error',
-        message: 'Invalid email or password.',
-      });
-      return;
-    }
 
     // Update last login timestamp
     admin.lastLogin = new Date();
@@ -89,6 +119,7 @@ export const loginAdmin = async (req: Request, res: Response): Promise<void> => 
       status: 'success',
       message: 'Authentication successful.',
       token,
+      accountType: 'admin',
       admin: {
         id: admin._id,
         name: admin.name,

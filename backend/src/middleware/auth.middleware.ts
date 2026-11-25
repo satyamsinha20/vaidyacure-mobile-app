@@ -12,6 +12,8 @@ interface JwtPayload {
   id: string;
   email: string;
   role: string;
+  /** "admin" (older admin tokens have none); doctor tokens say "doctor" and are refused here */
+  typ?: string;
 }
 
 export const authenticateAdmin = async (
@@ -38,6 +40,10 @@ export const authenticateAdmin = async (
 
     // Verify JWT (HS256 only, so tokens can never be accepted with another algorithm)
     const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as JwtPayload;
+    if ((decoded.typ && decoded.typ !== 'admin') || typeof decoded.id !== 'string' || !/^[a-f0-9]{24}$/.test(decoded.id)) {
+      res.status(401).json({ status: 'error', message: 'Invalid or expired session token.' });
+      return;
+    }
 
     // Find admin and verify active status
     const admin = await Admin.findById(decoded.id);
