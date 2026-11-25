@@ -38,10 +38,7 @@ export const recordAdReward = async (deviceId: string) => {
   const required = settings.adsRequired;
   if (watched < required) return { watched, required, unlockToken: null, expiresAt: null };
 
+  // Every unlock needs a fresh set of ads; there is no daily limit on unlocks
   await resetCounter(progressKey);
-  const unlocks = await incrementCounter(`ads:unlocks:device:${deviceId}:${day}`, DAILY_TTL_MS);
-  if (unlocks > settings.adUnlocksPerDevicePerDay) {
-    throw new ConsultError(429, "You have used today's ad unlocks. Please try again tomorrow.", 'limit_reached');
-  }
   return { watched: required, required, ...(await issueUnlockToken(deviceId, 'ads_test')) };
 };

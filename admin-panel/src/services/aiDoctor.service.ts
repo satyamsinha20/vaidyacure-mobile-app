@@ -101,6 +101,9 @@ export interface AiSettings {
   photoAiFallbackModel: string;
   photoAiPerDevicePerDay: number;
   photoAiGlobalPerDay: number;
+  /** Mic button in the app's search, and the language it starts in */
+  voiceSearchEnabled: boolean;
+  voiceSearchLanguage: 'en-IN' | 'hi-IN';
 }
 
 export interface AiAuditEntry {
@@ -168,7 +171,8 @@ export const aiDoctorService = {
   async getSettings() {
     return (await apiRequest<Envelope<AiSettings>>(`${BASE}/settings`)).data;
   },
-  async updateSettings(input: AiSettings) {
+  /** Saves only the given fields (the AI Doctor page and Settings > Search save different parts) */
+  async updateSettings(input: Partial<AiSettings>) {
     return (await apiRequest<Envelope<AiSettings>>(`${BASE}/settings`, json('PUT', input))).data;
   },
 

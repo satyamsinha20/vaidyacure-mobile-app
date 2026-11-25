@@ -4,6 +4,8 @@ import { runSearch, QUERY_MAX_LENGTH } from '../services/search/searchService.js
 import { getAiAnswer } from '../services/search/aiAnswer.js';
 import { readMedicineNamesFromPhoto } from '../services/search/photoReader.js';
 import { searchWeb } from '../services/search/webSearch.js';
+import { getAiSettings } from '../services/ai/configStore.js';
+import { WebSearchSettings } from '../models/WebSearchSettings.js';
 import { DAILY_TTL_MS, getClientIp, getDeviceId, incrementCounter, today } from '../services/rateLimit.js';
 
 const SearchQuery = z.object({
@@ -167,5 +169,29 @@ export const searchImage = async (req: Request, res: Response): Promise<void> =>
   } catch (error) {
     console.error('[search] image error:', error instanceof Error ? error.message : error);
     res.status(500).json({ status: 'error', message: 'Could not read the photo. Please try again.' });
+  }
+};
+
+/**
+ * @desc    Which search features the app should show (set in admin Settings > Search)
+ * @route   GET /api/search/config
+ * @access  Public (Mobile App); no models, keys or limits are included
+ */
+export const searchConfig = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const [settings, web] = await Promise.all([getAiSettings(), WebSearchSettings.findOne({ key: 'global' }).select('+apiKey enabled').lean()]);
+    res.json({
+      status: 'success',
+      data: {
+        aiAnswer: settings.searchAiEnabled,
+        internet: Boolean(web?.enabled !== false && web?.apiKey),
+        photo: settings.photoAiEnabled,
+        voice: settings.voiceSearchEnabled,
+        voiceLanguage: settings.voiceSearchLanguage,
+      },
+    });
+  } catch (error) {
+    console.error('[search] config failed:', error instanceof Error ? error.message : error);
+    res.status(500).json({ status: 'error', message: 'Something went wrong.' });
   }
 };

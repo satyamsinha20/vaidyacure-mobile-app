@@ -2,11 +2,10 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Stethoscope, Server, Settings, History, ShieldCheck, AlertTriangle, CheckCircle2, X, Lock } from "lucide-react";
+import { ArrowLeft, Stethoscope, Settings, History, ShieldCheck, AlertTriangle, CheckCircle2, X, Lock } from "lucide-react";
 import Sidebar from "@/components/dashboard/Sidebar";
 import TopNav from "@/components/dashboard/TopNav";
 import DoctorsTab from "@/components/ai-doctor/DoctorsTab";
-import ProvidersTab from "@/components/ai-doctor/ProvidersTab";
 import SettingsTab from "@/components/ai-doctor/SettingsTab";
 import ActivityTab from "@/components/ai-doctor/ActivityTab";
 import { Spinner, errorMessage } from "@/components/ai-doctor/ui";
@@ -14,12 +13,11 @@ import { authService, AdminUser } from "@/services/auth.service";
 import { aiDoctorService, AiAuditEntry, AiDoctor, AiProvider, AiSettings, AiStatus } from "@/services/aiDoctor.service";
 import { ROUTES } from "@/lib/constants";
 
-type Tab = "doctors" | "providers" | "settings" | "activity";
+type Tab = "doctors" | "settings" | "activity";
 
 const TABS: Array<{ key: Tab; label: string; icon: React.ElementType }> = [
   { key: "doctors", label: "Doctors", icon: Stethoscope },
-  { key: "providers", label: "Providers", icon: Server },
-  { key: "settings", label: "Settings", icon: Settings },
+  { key: "settings", label: "Chat rules", icon: Settings },
   { key: "activity", label: "Activity", icon: History },
 ];
 
@@ -174,7 +172,7 @@ export default function AiDoctorPage() {
 
                 <div className="p-2.5 rounded-xl bg-white border border-gray-200 text-[11px] text-gray-600 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  API keys are encrypted (AES-256) and never leave the server. The mobile app only sees doctor names and designations.
+                  API keys and providers are in Settings (top bar); search, photo and mic settings are in Settings &gt; Search. The app only sees doctor names and designations.
                 </div>
 
                 {/* Tabs */}
@@ -204,8 +202,6 @@ export default function AiDoctorPage() {
                   </div>
                 ) : tab === "doctors" ? (
                   <DoctorsTab doctors={doctors} providers={providers} onChanged={refreshConfig} notify={notify} />
-                ) : tab === "providers" ? (
-                  <ProvidersTab providers={providers} onChanged={refreshConfig} notify={notify} />
                 ) : tab === "settings" ? (
                   <SettingsTab
                     settings={settings}

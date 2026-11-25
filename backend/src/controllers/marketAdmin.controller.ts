@@ -4,18 +4,16 @@ import type { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { Booking, BOOKING_STATUSES, type IBooking } from '../models/Booking.js';
 import { Doctor } from '../models/Doctor.js';
-import { EmailSettings, DEFAULT_EMAIL } from '../models/EmailSettings.js';
 import { LiveMessage } from '../models/LiveMessage.js';
 import { MarketplaceSettings } from '../models/MarketplaceSettings.js';
 import { Patient } from '../models/Patient.js';
 import { AiDoctor } from '../models/AiDoctor.js';
 import { WalletTopup } from '../models/Wallet.js';
-import { encryptSecret, isEncryptionConfigured, randomToken, secretHint, sha256 } from '../utils/secretBox.js';
 import { paiseToRupees } from '../utils/money.js';
 import { getClientIp } from '../services/rateLimit.js';
 import { AppError, objectIdParam, parseInput, publicIdParam, route } from '../services/http.js';
 import { EmailSchema } from '../services/patient/auth.js';
-import { invalidateMailer, isEmailReady, sendMails, sendTestMail } from '../services/email/mailer.js';
+import { sendMails } from '../services/email/mailer.js';
 import { doctorWelcomeMail } from '../services/email/templates.js';
 import { getMarketplaceSettings, invalidateMarketplaceSettings } from '../services/marketplace/settings.js';
 import {
@@ -81,28 +79,7 @@ const SettingsSchema = z.object({
 });
 
 export const getSettings = route(async (_req: AuthenticatedRequest, res: Response) => {
-  const [settings, email] = await Promise.all([getMarketplaceSettings(), EmailSettings.findOne({ key: 'global' }).lean()]);
-  const cron = await MarketplaceSettings.findOne({ key: 'global' }).select('+cronKeyHash').lean();
-  res.json({
-    status: 'success',
-    data: {
-      settings,
-      cronConfigured: Boolean(cron?.cronKeyHash || process.env.CRON_SECRET),
-      email: {
-        enabled: email?.enabled ?? DEFAULT_EMAIL.enabled,
-        host: email?.host ?? DEFAULT_EMAIL.host,
-        port: email?.port ?? DEFAULT_EMAIL.port,
-        secure: email?.secure ?? DEFAULT_EMAIL.secure,
-        user: email?.user ?? '',
-        hasPassword: Boolean(email?.passHint),
-        passHint: email?.passHint ?? '',
-        fromName: email?.fromName ?? DEFAULT_EMAIL.fromName,
-        fromEmail: email?.fromEmail ?? '',
-        ready: await isEmailReady(),
-      },
-      encryptionConfigured: isEncryptionConfigured(),
-    },
-  });
+  res.json({ status: 'success', data: { settings: await getMarketplaceSettings() } });
 });
 
 export const updateSettings = route(async (req: AuthenticatedRequest, res: Response) => {
@@ -111,60 +88,6 @@ export const updateSettings = route(async (req: AuthenticatedRequest, res: Respo
   invalidateMarketplaceSettings();
   await audit(req, 'market.settings', 'global', JSON.stringify(input));
   res.json({ status: 'success', data: await getMarketplaceSettings() });
-});
-
-const EmailInputSchema = z.object({
-  enabled: z.boolean(),
-  host: z.string().trim().min(3).max(120).regex(/^[a-zA-Z0-9.-]+$/, 'Host looks wrong'),
-  port: z.number().int().min(1).max(65535),
-  secure: z.boolean(),
-  user: z.string().trim().max(120),
-  password: z.string().trim().min(8).max(200).optional(),
-  fromName: z.string().trim().min(2).max(60),
-  fromEmail: EmailSchema.or(z.literal('')),
-  removePassword: z.boolean().optional(),
-});
-
-export const updateEmail = route(async (req: AuthenticatedRequest, res: Response) => {
-  const input = parseInput(EmailInputSchema, req.body);
-  if (input.password && !isEncryptionConfigured()) {
-    throw new AppError(400, 'CONFIG_ENCRYPTION_KEY is not set on the server, so the password cannot be stored securely.');
-  }
-  const $set: Record<string, unknown> = {
-    enabled: input.enabled,
-    host: input.host,
-    port: input.port,
-    secure: input.secure,
-    user: input.user,
-    fromName: input.fromName,
-    fromEmail: input.fromEmail,
-  };
-  // Gmail shows app passwords with spaces ("abcd efgh ijkl mnop"); SMTP needs them without
-  const password = input.password?.replace(/\s+/g, '');
-  if (password) {
-    $set.pass = encryptSecret(password, 'email-password');
-    $set.passHint = secretHint(password);
-  } else if (input.removePassword) {
-    $set.pass = null;
-    $set.passHint = '';
-  }
-  await EmailSettings.findOneAndUpdate({ key: 'global' }, { $set }, { upsert: true, runValidators: true });
-  invalidateMailer();
-  await audit(req, 'email.update', input.user, password ? 'password changed' : input.removePassword ? 'password removed' : '');
-  res.json({ status: 'success', message: 'Email settings saved.' });
-});
-
-export const testEmail = route(async (req: AuthenticatedRequest, res: Response) => {
-  const { to } = parseInput(z.object({ to: EmailSchema }), req.body);
-  res.json({ status: 'success', data: await sendTestMail(to) });
-});
-
-/** A new secret URL for an external cron service (shown once) */
-export const createCronKey = route(async (req: AuthenticatedRequest, res: Response) => {
-  const key = randomToken(24);
-  await MarketplaceSettings.findOneAndUpdate({ key: 'global' }, { $set: { cronKeyHash: sha256(key) } }, { upsert: true });
-  await audit(req, 'cron.key', 'global');
-  res.json({ status: 'success', data: { key } });
 });
 
 /* -------------------------------------------------------------------------- */

@@ -296,3 +296,33 @@ describe('AI booking limits', () => {
     expect(results[3].body.code).toBe('too_many_bookings');
   });
 });
+
+describe('ads: 3 new ads for every chat, no daily limit', () => {
+  it('ad unlocks work again and again in a day; only the Library Doctor (no ads) has a daily limit', async () => {
+    const { AiSettings } = await import('../src/models/AiSettings.js');
+    const { AiDoctor } = await import('../src/models/AiDoctor.js');
+    const { invalidateAiConfigCache } = await import('../src/services/ai/configStore.js');
+    await AiSettings.updateOne({ key: 'global' }, { $set: { freeConsultsPerDevicePerDay: 1 } }, { upsert: true });
+    await AiDoctor.updateMany({ tier: { $in: ['library', 'free'] } }, { $set: { alwaysAvailable: true } });
+    invalidateAiConfigCache();
+
+    const deviceId = 'device-unlimited-ads-01';
+    const headers = { 'X-Device-Id': deviceId };
+    expect((await start({ doctorId: ids.library, patient: PATIENT }, headers)).status).toBe(201);
+    const second = await start({ doctorId: ids.library, patient: PATIENT }, headers);
+    expect(second.status).toBe(429);
+
+    // Three separate unlocks (the old limit was two a day), each needing 3 new ads
+    for (let unlock = 0; unlock < 3; unlock++) {
+      let token: string | null = null;
+      for (let ad = 0; ad < 3; ad++) {
+        await new Promise((resolve) => setTimeout(resolve, 5100));
+        const r = await request(app).post('/api/consult/ads/reward').set(headers).send({});
+        expect(r.status).toBe(200);
+        token = r.body.data.unlockToken;
+        if (ad < 2) expect(token).toBeNull();
+      }
+      expect((await start({ doctorId: ids.free, patient: PATIENT, unlockToken: token }, headers)).status).toBe(201);
+    }
+  }, 120_000);
+});

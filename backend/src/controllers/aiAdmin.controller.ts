@@ -421,7 +421,9 @@ const SettingsSchema = z.object({
     .optional(),
   photoAiPerDevicePerDay: z.number().int().min(0).max(500).optional(),
   photoAiGlobalPerDay: z.number().int().min(0).max(100000).optional(),
-});
+  voiceSearchEnabled: z.boolean().optional(),
+  voiceSearchLanguage: z.enum(['en-IN', 'hi-IN']).optional(),
+}).partial();
 
 export const getSettings = handle(async (_req, res) => {
   res.json({ status: 'success', data: await getAiSettings() });

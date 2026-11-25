@@ -16,6 +16,7 @@ import patientRoutes from './routes/patient.routes.js';
 import doctorPanelRoutes from './routes/doctorPanel.routes.js';
 import marketAdminRoutes from './routes/marketAdmin.routes.js';
 import { cronRouter, marketRouter } from './routes/market.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 import { adminContentRouter, appContentRouter } from './routes/content.routes.js';
 import { serverTiming } from './middleware/cache.middleware.js';
 
@@ -149,6 +150,9 @@ app.use('/api/admin/market', marketAdminRoutes);
 
 // Time-based work (reminders, no-shows) for an external cron service
 app.use('/api/cron', cronRouter);
+
+// Admin panel > Settings: SMTP, reminder URL and email texts
+app.use('/api/admin/settings', settingsRoutes);
 
 /* -------------------------------------------------------------------------- */
 /* ERROR HANDLING MIDDLEWARES                                                 */

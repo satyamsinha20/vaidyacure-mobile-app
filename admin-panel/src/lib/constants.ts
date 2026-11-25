@@ -13,4 +13,5 @@ export const ROUTES = {
   MANAGE_USERS: '/manage-users',
   REMEDIES: '/remedies',
   AI_DOCTOR: '/ai-doctor',
+  SETTINGS: '/settings',
 } as const;

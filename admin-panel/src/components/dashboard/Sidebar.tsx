@@ -57,7 +57,10 @@ const superAdminNavItems = [
 
 export default function Sidebar({ isOpen, onClose, adminUser }: SidebarProps) {
   const pathname = usePathname();
-  const [isRemediesOpen, setIsRemediesOpen] = useState(true);
+  // Open while a remedies page is shown; a click on the header opens/closes it on this page only
+  const onRemediesPage = pathname?.startsWith("/remedies") ?? false;
+  const [remediesToggle, setRemediesToggle] = useState<{ path: string; open: boolean } | null>(null);
+  const isRemediesOpen = remediesToggle && remediesToggle.path === pathname ? remediesToggle.open : onRemediesPage;
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -102,7 +105,7 @@ export default function Sidebar({ isOpen, onClose, adminUser }: SidebarProps) {
           {/* Parent Dropdown Button */}
           <button
             type="button"
-            onClick={() => setIsRemediesOpen(!isRemediesOpen)}
+            onClick={() => setRemediesToggle({ path: pathname ?? "", open: !isRemediesOpen })}
             className="w-full flex items-center justify-between px-2.5 py-2 text-white hover:bg-white/10 active:bg-white/15 rounded-xl transition-all cursor-pointer group"
           >
             <div className="flex items-center gap-2.5">

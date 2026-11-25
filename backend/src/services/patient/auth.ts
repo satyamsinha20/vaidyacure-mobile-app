@@ -23,7 +23,10 @@ import { paiseToRupees } from '../../utils/money.js';
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const RESEND_AFTER_MS = 45 * 1000;
-const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000;
+// A session lives one year and renews itself whenever the app is used (at most once a day),
+// so a patient stays logged in until they log out, reinstall or clear the app's data
+const SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+const SESSION_RENEW_AFTER_MS = 24 * 60 * 60 * 1000;
 const MAX_SESSIONS = 5;
 const HOUR_MS = 60 * 60 * 1000;
 export const SESSION_TOKEN_PATTERN = /^vcp_[a-f0-9]{64}$/;
@@ -74,7 +77,7 @@ export const requestLoginCode = async (email: string, who: Who): Promise<{ expir
     { $set: { codeHash: otpHash(email, code), attempts: 0, sentAt: new Date(now), expiresAt: new Date(now + OTP_TTL_MS) } },
     { upsert: true }
   );
-  if (!(await sendMail(otpMail(email, code)))) {
+  if (!(await sendMail(await otpMail(email, code)))) {
     await EmailOtp.deleteOne({ email });
     throw new AppError(503, 'We could not send the email right now. Please try again in a few minutes.', 'email_unavailable');
   }
@@ -166,7 +169,11 @@ const loadPatient = async (token: string): Promise<IPatient | null> => {
   const session = await PatientSession.findOne({ tokenHash: sha256(token), expiresAt: { $gt: new Date() } }).lean();
   if (!session) return null;
   const patient = await Patient.findById(session.patient);
-  return patient && !patient.isBlocked ? patient : null;
+  if (!patient || patient.isBlocked) return null;
+  if (session.expiresAt.getTime() - Date.now() < SESSION_TTL_MS - SESSION_RENEW_AFTER_MS) {
+    await PatientSession.updateOne({ _id: session._id }, { $set: { expiresAt: new Date(Date.now() + SESSION_TTL_MS) } });
+  }
+  return patient;
 };
 
 const loginRequired = (res: Response) =>

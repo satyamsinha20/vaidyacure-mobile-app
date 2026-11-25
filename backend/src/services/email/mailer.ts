@@ -82,9 +82,13 @@ export const sendMail = async (mail: MailInput): Promise<boolean> => {
   }
 };
 
-/** Sends several emails at once; never throws */
-export const sendMails = async (mails: Array<MailInput | null | undefined>): Promise<void> => {
-  await Promise.allSettled(mails.filter((m): m is MailInput => Boolean(m && m.to)).map(sendMail));
+type MaybeMail = MailInput | Promise<MailInput> | null | undefined | false;
+
+/** Sends several emails at once (templates may still be loading); never throws */
+export const sendMails = async (mails: MaybeMail[]): Promise<void> => {
+  const ready = await Promise.allSettled(mails.map((m) => Promise.resolve(m)));
+  const list = ready.flatMap((r) => (r.status === 'fulfilled' && r.value && r.value.to ? [r.value] : []));
+  await Promise.allSettled(list.map(sendMail));
 };
 
 /** Admin "Send test email" button: reports the real SMTP error */

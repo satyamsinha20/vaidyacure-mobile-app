@@ -74,6 +74,8 @@ const pickSettings = (doc: (Partial<Record<keyof IAiSettings, any>> & { premiumA
   photoAiFallbackModel: doc?.photoAiFallbackModel ?? DEFAULT_AI_SETTINGS.photoAiFallbackModel,
   photoAiPerDevicePerDay: doc?.photoAiPerDevicePerDay ?? DEFAULT_AI_SETTINGS.photoAiPerDevicePerDay,
   photoAiGlobalPerDay: doc?.photoAiGlobalPerDay ?? DEFAULT_AI_SETTINGS.photoAiGlobalPerDay,
+  voiceSearchEnabled: doc?.voiceSearchEnabled ?? DEFAULT_AI_SETTINGS.voiceSearchEnabled,
+  voiceSearchLanguage: (doc?.voiceSearchLanguage ?? DEFAULT_AI_SETTINGS.voiceSearchLanguage) as 'en-IN' | 'hi-IN',
 });
 
 export const getAiSettings = async (): Promise<AiSettingsValues> => {

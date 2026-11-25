@@ -27,24 +27,8 @@ export interface MarketSettings {
   refundHours: number;
 }
 
-export interface EmailConfig {
-  enabled: boolean;
-  host: string;
-  port: number;
-  secure: boolean;
-  user: string;
-  hasPassword: boolean;
-  passHint: string;
-  fromName: string;
-  fromEmail: string;
-  ready: boolean;
-}
-
 export interface MarketSettingsResponse {
   settings: MarketSettings;
-  email: EmailConfig;
-  cronConfigured: boolean;
-  encryptionConfigured: boolean;
 }
 
 export interface PlanPayment {
@@ -207,10 +191,6 @@ export const marketService = {
   summary: () => get<MarketSummary>('/summary'),
   getSettings: () => get<MarketSettingsResponse>('/settings'),
   saveSettings: async (input: MarketSettings) => (await send<MarketSettings>('PUT', '/settings', input)).data,
-  saveEmail: (input: Omit<EmailConfig, 'hasPassword' | 'passHint' | 'ready'> & { password?: string; removePassword?: boolean }) =>
-    send('PUT', '/email', input),
-  testEmail: async (to: string) => (await send<{ ok: boolean; message: string }>('POST', '/email/test', { to })).data,
-  createCronKey: async () => (await send<{ key: string }>('POST', '/cron-key')).data,
 
   listDoctors: () => get<RealDoctor[]>('/doctors'),
   createDoctor: async (input: DoctorProfileInput & { plan: { amountInr: number; utr: string; validUntil?: string } }) =>

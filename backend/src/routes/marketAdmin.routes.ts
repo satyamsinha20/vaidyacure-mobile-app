@@ -15,9 +15,6 @@ router.use(authenticateAdmin, requireRole(ADMIN_ROLES.SUPERADMIN));
 router.get('/summary', admin.summary);
 router.get('/settings', admin.getSettings);
 router.put('/settings', admin.updateSettings);
-router.put('/email', admin.updateEmail);
-router.post('/email/test', admin.testEmail);
-router.post('/cron-key', admin.createCronKey);
 
 router.get('/doctors', admin.listDoctors);
 router.post('/doctors', admin.addDoctor);

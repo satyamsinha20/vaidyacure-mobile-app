@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Leaf,
   Stethoscope,
+  Settings,
 } from "lucide-react";
 import { authService, AdminUser, DEFAULT_ADMIN } from "@/services/auth.service";
 import { contentService, FEEDBACK_COUNT_EVENT } from "@/services/content.service";
@@ -169,6 +170,17 @@ export default function TopNav({ onToggleSidebar, adminUser }: TopNavProps) {
           >
             <Stethoscope className="w-3.5 h-3.5 text-emerald-700" />
             <span className="hidden sm:inline">AI Doctor</span>
+          </Link>
+        )}
+
+        {/* Settings: API keys, email and search (super admin only) */}
+        {isSuperAdmin && (
+          <Link
+            href={ROUTES.SETTINGS}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50/90 hover:bg-emerald-100 text-[#0F472B] text-xs font-bold border border-emerald-200/80 transition-all cursor-pointer shadow-2xs shrink-0"
+          >
+            <Settings className="w-3.5 h-3.5 text-emerald-700" />
+            <span className="hidden sm:inline">Settings</span>
           </Link>
         )}
       </div>

@@ -30,6 +30,9 @@ export interface IAiSettings extends Document {
   photoAiFallbackModel: string;
   photoAiPerDevicePerDay: number;
   photoAiGlobalPerDay: number;
+  /** Voice search (mic) in the app, and the language it starts in */
+  voiceSearchEnabled: boolean;
+  voiceSearchLanguage: 'en-IN' | 'hi-IN';
   /** The Library Doctor was created once (it is not re-created if the admin deletes it) */
   libraryDoctorSeeded?: boolean;
   updatedAt: Date;
@@ -60,6 +63,8 @@ export const DEFAULT_AI_SETTINGS = {
   photoAiFallbackModel: 'qwen/qwen3.7-flash',
   photoAiPerDevicePerDay: 20,
   photoAiGlobalPerDay: 1000,
+  voiceSearchEnabled: true,
+  voiceSearchLanguage: 'en-IN' as 'en-IN' | 'hi-IN',
 };
 
 const AiSettingsSchema = new Schema<IAiSettings>(
@@ -86,6 +91,8 @@ const AiSettingsSchema = new Schema<IAiSettings>(
     photoAiFallbackModel: { type: String, default: DEFAULT_AI_SETTINGS.photoAiFallbackModel, trim: true, maxlength: 120 },
     photoAiPerDevicePerDay: { type: Number, default: DEFAULT_AI_SETTINGS.photoAiPerDevicePerDay, min: 0, max: 500 },
     photoAiGlobalPerDay: { type: Number, default: DEFAULT_AI_SETTINGS.photoAiGlobalPerDay, min: 0, max: 100000 },
+    voiceSearchEnabled: { type: Boolean, default: DEFAULT_AI_SETTINGS.voiceSearchEnabled },
+    voiceSearchLanguage: { type: String, enum: ['en-IN', 'hi-IN'], default: DEFAULT_AI_SETTINGS.voiceSearchLanguage },
     libraryDoctorSeeded: { type: Boolean, default: false },
   },
   { timestamps: true }

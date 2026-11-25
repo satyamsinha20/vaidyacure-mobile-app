@@ -168,13 +168,14 @@ export const startConsultation = async (
     if (count > settings.premiumUnlocksPerDevicePerDay) {
       throw new ConsultError(429, "You have reached today's premium consultation limit. Please try again tomorrow.", 'limit_reached');
     }
-  } else {
+  } else if (doctor.tier === 'library') {
+    // The Library Doctor needs no ads, so it has a daily limit (ad-unlocked chats have none)
     const [deviceCount, ipCount] = await Promise.all([
       incrementCounter(`consult:free:device:${deviceId}:${day}`, DAILY_TTL_MS),
       incrementCounter(`consult:free:ip:${ip}:${day}`, DAILY_TTL_MS),
     ]);
     if (deviceCount > settings.freeConsultsPerDevicePerDay || ipCount > settings.freeConsultsPerDevicePerDay * 4) {
-      throw new ConsultError(429, "You have used today's free consultations. Please try again tomorrow.", 'limit_reached');
+      throw new ConsultError(429, "You have used today's free Library Doctor chats. Watch ads to talk to another free doctor, or try again tomorrow.", 'limit_reached');
     }
   }
 

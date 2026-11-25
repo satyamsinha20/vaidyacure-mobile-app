@@ -362,19 +362,19 @@ describe('admin dashboards and settings', () => {
 
     // SMTP password is stored encrypted and never returned
     const email = await request(app)
-      .put('/api/admin/market/email')
+      .put('/api/admin/settings/email')
       .set(auth)
       .send({ enabled: true, host: 'smtp.gmail.com', port: 465, secure: true, user: 'sender@gmail.com', password: 'abcd efgh ijkl mnop', fromName: 'VaidyaCure', fromEmail: '' });
     expect(email.status).toBe(200);
-    const after = await request(app).get('/api/admin/market/settings').set(auth);
-    expect(after.body.data.email.hasPassword).toBe(true);
+    const after = await request(app).get('/api/admin/settings/email').set(auth);
+    expect(after.body.data.hasPassword).toBe(true);
     expect(JSON.stringify(after.body)).not.toContain('abcdefghijklmnop');
     const { EmailSettings } = await import('../src/models/EmailSettings.js');
     const raw = await EmailSettings.findOne({ key: 'global' }).select('+pass').lean();
     expect(JSON.stringify(raw)).not.toContain('abcdefghijklmnop');
 
     // A cron key works once created, and only that key
-    const key = await request(app).post('/api/admin/market/cron-key').set(auth).send({});
+    const key = await request(app).post('/api/admin/settings/cron-key').set(auth).send({});
     expect(key.body.data.key).toMatch(/^[a-f0-9]{48}$/);
     expect((await request(app).get(`/api/cron/tick?key=${key.body.data.key}`)).status).toBe(200);
     expect((await request(app).get(`/api/cron/tick?key=${'b'.repeat(48)}`)).status).toBe(401);

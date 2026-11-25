@@ -47,8 +47,9 @@ export const stopApp = async () => {
   await replset?.stop();
 };
 
+/** The newest 6-digit login code emailed to this address (the admin can change the email's wording) */
 export const lastCodeFor = (email: string): string | null => {
-  const mail = [...outbox].reverse().find((m) => m.to === email && /login code/i.test(m.subject));
+  const mail = [...outbox].reverse().find((m) => m.to === email && /\b\d{6}\b/.test(m.text));
   return mail?.text.match(/\b(\d{6})\b/)?.[1] ?? null;
 };
 

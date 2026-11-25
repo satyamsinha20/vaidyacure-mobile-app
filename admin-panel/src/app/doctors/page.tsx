@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CalendarPlus, Eye, KeyRound, Pencil, Plus, Power, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Eye, KeyRound, Pencil, Plus, Power } from "lucide-react";
 import AdminPageShell from "@/components/admin/AdminPageShell";
-import { Field, Modal, Spinner, Toggle, dangerBtn, errorMessage, ghostBtn, inputClass, primaryBtn } from "@/components/ai-doctor/ui";
+import { Field, Modal, Spinner, dangerBtn, errorMessage, ghostBtn, inputClass, primaryBtn } from "@/components/ai-doctor/ui";
 import { Card, CopyButton, Empty, Tabs, WeeklyHoursEditor, dateOnly, inr, when } from "@/components/market/ui";
 import { AccessState, PromptModal, useNow, useSuperAdmin, useToast } from "@/components/market/hooks";
 import {
@@ -11,12 +11,11 @@ import {
   BankDetails,
   DoctorLogin,
   DoctorProfileInput,
-  EmailConfig,
   MarketSettings,
   RealDoctor,
 } from "@/services/market.service";
 
-type Tab = "doctors" | "rules" | "email";
+type Tab = "doctors" | "rules";
 
 const emptyProfile: DoctorProfileInput = {
   name: "",
@@ -80,7 +79,7 @@ export default function DoctorsPage() {
   return (
     <AdminPageShell
       title="Real Doctors"
-      subtitle="Create doctor logins after the yearly platform fee, set fees and rules, and manage payment email"
+      subtitle="Create doctor logins after the yearly platform fee, and set fees and booking rules"
       toast={toast}
       onDismissToast={dismiss}
       actions={
@@ -108,7 +107,6 @@ export default function DoctorsPage() {
             tabs={[
               { key: "doctors", label: "Doctors" },
               { key: "rules", label: "Rules & UPI" },
-              { key: "email", label: "Email & reminders" },
             ]}
           />
           {tab === "doctors" &&
@@ -227,7 +225,6 @@ export default function DoctorsPage() {
               </div>
             ))}
           {tab === "rules" && <RulesTab notify={notify} />}
-          {tab === "email" && <EmailTab notify={notify} />}
         </>
       )}
 
@@ -549,165 +546,5 @@ function RulesTab({ notify }: { notify: (m: string, k?: "success" | "error") => 
         {saving && <Spinner />} Save rules
       </button>
     </Card>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* EMAIL (Nodemailer SMTP) + CRON                                             */
-/* -------------------------------------------------------------------------- */
-function EmailTab({ notify }: { notify: (m: string, k?: "success" | "error") => void }) {
-  const [cfg, setCfg] = useState<EmailConfig | null>(null);
-  const [password, setPassword] = useState("");
-  const [testTo, setTestTo] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [cronUrl, setCronUrl] = useState<string | null>(null);
-  const [cronConfigured, setCronConfigured] = useState(false);
-
-  const load = useCallback(() => {
-    marketService
-      .getSettings()
-      .then((r) => {
-        setCfg(r.email);
-        setCronConfigured(r.cronConfigured);
-      })
-      .catch((e) => notify(errorMessage(e), "error"));
-  }, [notify]);
-  useEffect(load, [load]);
-  if (!cfg) return <Spinner />;
-
-  const save = async (removePassword = false) => {
-    setBusy(true);
-    try {
-      await marketService.saveEmail({
-        enabled: cfg.enabled,
-        host: cfg.host,
-        port: cfg.port,
-        secure: cfg.secure,
-        user: cfg.user,
-        fromName: cfg.fromName,
-        fromEmail: cfg.fromEmail,
-        ...(password ? { password } : {}),
-        ...(removePassword ? { removePassword: true } : {}),
-      });
-      setPassword("");
-      notify("Email settings saved.");
-      load();
-    } catch (error) {
-      notify(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <Card
-        title="Email (login codes, bookings, refunds)"
-        subtitle="Gmail: turn on 2-Step Verification, then create an App Password at myaccount.google.com/apppasswords and paste it here."
-        actions={
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.ready ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
-            {cfg.ready ? "Ready" : "Not set up"}
-          </span>
-        }
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Gmail / SMTP username">
-            <input className={inputClass} value={cfg.user} onChange={(e) => setCfg({ ...cfg, user: e.target.value.trim() })} placeholder="yourname@gmail.com" />
-          </Field>
-          <Field label={cfg.hasPassword ? `App password (saved ${cfg.passHint})` : "App password"} hint="Stored encrypted. Never shown again.">
-            <input type="password" autoComplete="off" className={inputClass} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={cfg.hasPassword ? "Paste a new one to replace" : "16-character app password"} />
-          </Field>
-          <Field label="Sender name">
-            <input className={inputClass} value={cfg.fromName} onChange={(e) => setCfg({ ...cfg, fromName: e.target.value })} />
-          </Field>
-          <Field label="Sender email (optional)" hint="Empty = the username">
-            <input className={inputClass} value={cfg.fromEmail} onChange={(e) => setCfg({ ...cfg, fromEmail: e.target.value.trim() })} />
-          </Field>
-          <Field label="SMTP server">
-            <input className={inputClass} value={cfg.host} onChange={(e) => setCfg({ ...cfg, host: e.target.value.trim() })} />
-          </Field>
-          <div className="grid grid-cols-2 gap-2 items-end">
-            <Field label="Port">
-              <input type="number" className={inputClass} value={cfg.port} onChange={(e) => setCfg({ ...cfg, port: Number(e.target.value) })} />
-            </Field>
-            <div className="pb-1.5">
-              <Toggle checked={cfg.secure} onChange={(v) => setCfg({ ...cfg, secure: v })} label="SSL" />
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Toggle checked={cfg.enabled} onChange={(v) => setCfg({ ...cfg, enabled: v })} label={cfg.enabled ? "Sending on" : "Sending off"} />
-          <button type="button" className={primaryBtn} onClick={() => save()} disabled={busy}>
-            {busy && <Spinner />} Save
-          </button>
-          {cfg.hasPassword && (
-            <button type="button" className={dangerBtn} onClick={() => window.confirm("Remove the saved password? Emails will stop.") && save(true)}>
-              Remove password
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
-          <input className={`${inputClass} max-w-xs`} value={testTo} onChange={(e) => setTestTo(e.target.value.trim())} placeholder="Send a test email to…" />
-          <button
-            type="button"
-            className={ghostBtn}
-            disabled={!testTo || busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                const r = await marketService.testEmail(testTo);
-                notify(r.message, r.ok ? "success" : "error");
-              } catch (error) {
-                notify(errorMessage(error), "error");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <Send className="w-3.5 h-3.5" /> Send test
-          </button>
-        </div>
-      </Card>
-
-      <Card
-        title="Reminders on time (cron)"
-        subtitle="Reminder emails 15 minutes before, and 'consultation time now' alerts, need a ping every minute. No-shows and refunds work without it."
-        actions={
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${cronConfigured ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-600 border-gray-200"}`}>
-            {cronConfigured ? "Key created" : "Not set up"}
-          </span>
-        }
-      >
-        <ol className="text-[11px] text-gray-600 list-decimal pl-4 space-y-0.5">
-          <li>Create a free account at cron-job.org.</li>
-          <li>Generate the secret URL below and add it there as a job that runs every 1 minute.</li>
-        </ol>
-        {cronUrl ? (
-          <div className="flex items-center gap-2 p-2 rounded-xl bg-gray-50 border border-gray-200">
-            <p className="text-[11px] font-mono break-all flex-1">{cronUrl}</p>
-            <CopyButton text={cronUrl} />
-          </div>
-        ) : (
-          <button
-            type="button"
-            className={ghostBtn}
-            onClick={async () => {
-              if (cronConfigured && !window.confirm("Create a new URL? The old one will stop working.")) return;
-              try {
-                const { key } = await marketService.createCronKey();
-                const api = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api").replace(/\/+$/, "");
-                setCronUrl(`${api}/cron/tick?key=${key}`);
-                setCronConfigured(true);
-              } catch (error) {
-                notify(errorMessage(error), "error");
-              }
-            }}
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> {cronConfigured ? "Create a new secret URL" : "Create secret URL"}
-          </button>
-        )}
-        <p className="text-[10.5px] text-gray-500">The URL is shown once. Keep it private.</p>
-      </Card>
-    </div>
   );
 }
