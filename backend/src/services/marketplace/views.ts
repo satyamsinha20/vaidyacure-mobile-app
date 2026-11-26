@@ -12,8 +12,8 @@ export interface DoctorCard {
   name: string;
   qualification: string;
   specialization: string;
+  /** The doctor's VaidyaCure number (VC-DOC-000001) */
   registrationNumber: string;
-  registrationCouncil: string;
   experienceYears: number;
   about: string;
   languages: string[];
@@ -26,8 +26,7 @@ export const doctorCard = (d: IDoctor): DoctorCard => ({
   name: d.name,
   qualification: d.qualification,
   specialization: d.specialization,
-  registrationNumber: d.registrationNumber,
-  registrationCouncil: d.registrationCouncil,
+  registrationNumber: d.doctorCode,
   experienceYears: d.experienceYears,
   about: d.about,
   languages: d.languages,

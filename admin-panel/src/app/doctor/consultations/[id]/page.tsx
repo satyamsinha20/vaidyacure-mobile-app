@@ -12,7 +12,9 @@ import { doctorPanelService, ChatState, DoctorBooking, DoctorMe, DoctorReport, L
 
 const POLL_MS = 2500;
 const LIVE = ["confirmed", "in_progress"];
-const emptyReport = (): DoctorReport => ({ diagnosis: "", advice: "", medicines: [], tests: [], followUpAdvice: "" });
+const emptyReport = (): DoctorReport => ({ diagnosis: "", advice: "", medicines: [], medicinesText: "", tests: [], testsText: "", followUpAdvice: "" });
+/** The server accepts at most this many medicine / test rows */
+const MAX_ROWS = 15;
 
 export default function ConsultationPage() {
   const { id } = useParams<{ id: string }>();
@@ -25,7 +27,6 @@ export default function ConsultationPage() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [report, setReport] = useState<DoctorReport>(emptyReport());
-  const [testsText, setTestsText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const lastSeq = useRef(0);
@@ -117,7 +118,7 @@ export default function ConsultationPage() {
       await doctorPanelService.sendReport(id, {
         ...report,
         medicines: report.medicines.filter((m) => m.name.trim()),
-        tests: testsText.split("\n").map((t) => t.trim()).filter(Boolean),
+        tests: report.tests.map((t) => t.trim()).filter(Boolean),
       });
       notify("Report sent to the patient.");
       await Promise.all([loadDetail(), poll()]);
@@ -252,17 +253,54 @@ export default function ConsultationPage() {
                       </button>
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    className={ghostBtn}
-                    onClick={() => setReport({ ...report, medicines: [...report.medicines, { name: "", dose: "", frequency: "", duration: "", notes: "" }] })}
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add medicine
-                  </button>
+                  {report.medicines.length < MAX_ROWS && (
+                    <button
+                      type="button"
+                      className={ghostBtn}
+                      onClick={() => setReport({ ...report, medicines: [...report.medicines, { name: "", dose: "", frequency: "", duration: "", notes: "" }] })}
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add medicine
+                    </button>
+                  )}
+                  <Field label="Or type the medicines">
+                    <textarea
+                      className={`${inputClass} h-20 py-2`}
+                      maxLength={5000}
+                      placeholder="e.g. Paracetamol 650 – 1 tablet morning and evening for 3 days"
+                      value={report.medicinesText ?? ""}
+                      onChange={(e) => setReport({ ...report, medicinesText: e.target.value })}
+                    />
+                  </Field>
                 </div>
-                <Field label="Tests (one per line)">
-                  <textarea className={`${inputClass} h-16 py-2`} value={testsText} onChange={(e) => setTestsText(e.target.value)} />
-                </Field>
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold text-gray-700">Tests</p>
+                  {report.tests.map((t, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <input
+                        className={inputClass}
+                        placeholder="Test"
+                        value={t}
+                        onChange={(e) => setReport({ ...report, tests: report.tests.map((x, j) => (j === i ? e.target.value : x)) })}
+                      />
+                      <button type="button" className="text-gray-400 hover:text-rose-600 cursor-pointer" onClick={() => setReport({ ...report, tests: report.tests.filter((_, j) => j !== i) })}>
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {report.tests.length < MAX_ROWS && (
+                    <button type="button" className={ghostBtn} onClick={() => setReport({ ...report, tests: [...report.tests, ""] })}>
+                      <Plus className="w-3.5 h-3.5" /> Add test
+                    </button>
+                  )}
+                  <Field label="Or type the tests">
+                    <textarea
+                      className={`${inputClass} h-20 py-2`}
+                      placeholder="e.g. CBC and sugar fasting, tomorrow morning on an empty stomach"
+                      value={report.testsText ?? ""}
+                      onChange={(e) => setReport({ ...report, testsText: e.target.value })}
+                    />
+                  </Field>
+                </div>
                 <Field label="Follow-up advice">
                   <input className={inputClass} maxLength={500} value={report.followUpAdvice} onChange={(e) => setReport({ ...report, followUpAdvice: e.target.value })} />
                 </Field>
@@ -325,19 +363,26 @@ function ReportView({ report }: { report: DoctorReport }) {
           <b>Advice:</b> {report.advice}
         </p>
       )}
-      {report.medicines.length > 0 && (
-        <ul className="list-disc pl-4">
-          {report.medicines.map((m, i) => (
-            <li key={i}>
-              {m.name} {[m.dose, m.frequency, m.duration].filter(Boolean).join(" · ")} {m.notes && `(${m.notes})`}
-            </li>
-          ))}
-        </ul>
+      {(report.medicines.length > 0 || report.medicinesText) && (
+        <div>
+          <b>Medicines:</b>
+          {report.medicines.length > 0 && (
+            <ul className="list-disc pl-4">
+              {report.medicines.map((m, i) => (
+                <li key={i}>
+                  {m.name} {[m.dose, m.frequency, m.duration].filter(Boolean).join(" · ")} {m.notes && `(${m.notes})`}
+                </li>
+              ))}
+            </ul>
+          )}
+          {report.medicinesText && <p className="whitespace-pre-wrap">{report.medicinesText}</p>}
+        </div>
       )}
-      {report.tests.length > 0 && (
-        <p>
+      {(report.tests.length > 0 || report.testsText) && (
+        <div>
           <b>Tests:</b> {report.tests.join(", ")}
-        </p>
+          {report.testsText && <p className="whitespace-pre-wrap">{report.testsText}</p>}
+        </div>
       )}
       {report.followUpAdvice && (
         <p>

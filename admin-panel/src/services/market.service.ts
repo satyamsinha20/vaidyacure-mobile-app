@@ -41,13 +41,12 @@ export interface PlanPayment {
 
 export interface RealDoctor {
   id: string;
+  /** The doctor's only number (registration number), made by the server: VC-DOC-000001 */
   doctorCode: string;
   email: string;
   name: string;
   qualification: string;
   specialization: string;
-  registrationNumber: string;
-  registrationCouncil: string;
   experienceYears: number;
   about: string;
   languages: string[];
@@ -67,6 +66,10 @@ export interface RealDoctor {
   lastLoginAt: string | null;
   bookable: boolean;
   createdAt: string;
+  /** Completed consultations (all time) */
+  consultations: number;
+  /** The doctor's total earnings in rupees (paid and unpaid) */
+  earned: number;
 }
 
 export interface DoctorProfileInput {
@@ -74,8 +77,6 @@ export interface DoctorProfileInput {
   email: string;
   qualification: string;
   specialization: string;
-  registrationNumber: string;
-  registrationCouncil: string;
   experienceYears: number;
   about: string;
   languages: string[];
@@ -217,8 +218,9 @@ export const marketService = {
   refundDismiss: (id: string) => send('POST', `/refunds/${id}/dismiss`),
 
   payouts: () => get<{ currentWeek: string; doctors: PayoutRow[]; history: SettlementRow[] }>('/payouts'),
-  settle: async (doctorId: string, utr: string, note: string) =>
-    (await send<{ id: string; amount: number; consultations: number }>('POST', `/payouts/${doctorId}/settle`, { utr, note })).data,
+  /** includeThisWeek = "Pay now": also this week's earnings so far, not only finished weeks */
+  settle: async (doctorId: string, utr: string, note: string, includeThisWeek = false) =>
+    (await send<{ id: string; amount: number; consultations: number }>('POST', `/payouts/${doctorId}/settle`, { utr, note, includeThisWeek })).data,
   earnings: (range: 'week' | 'month' | 'all') => get<Earnings>(`/earnings?range=${range}`),
 
   listChats: (flagged: boolean) => get<AdminBooking[]>(`/chats${flagged ? '?flagged=1' : ''}`),

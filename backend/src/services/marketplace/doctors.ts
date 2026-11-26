@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Types } from 'mongoose';
 import { Doctor, type IDoctor } from '../../models/Doctor.js';
 import { Booking } from '../../models/Booking.js';
 import { decryptSecret, encryptSecret } from '../../utils/secretBox.js';
@@ -10,7 +11,8 @@ import { expireOldHolds, isDoctorBookable } from './bookings.js';
 import { getMarketplaceSettings } from './settings.js';
 import { doctorCard } from './views.js';
 import { EmailSchema } from '../patient/auth.js';
-import { generateDoctorCode, generateTempPassword } from '../doctor/auth.js';
+import { generateTempPassword } from '../doctor/auth.js';
+import { ensureDoctorCodes, nextDoctorCode } from '../doctor/registrationNumber.js';
 
 /* -------------------------------------------------------------------------- */
 /* PUBLIC (mobile app)                                                        */
@@ -127,8 +129,6 @@ export const DoctorProfileSchema = z.object({
   email: EmailSchema,
   qualification: z.string().trim().min(2).max(80),
   specialization: z.string().trim().min(2).max(60),
-  registrationNumber: z.string().trim().min(3).max(40),
-  registrationCouncil: z.string().trim().min(3).max(80),
   experienceYears: z.number().int().min(0).max(70).default(0),
   about: z.string().trim().max(300).default(''),
   languages: z.array(z.string().trim().min(2).max(20)).max(8).default([]),
@@ -177,14 +177,38 @@ export const adminDoctorView = (d: IDoctor) => ({
   createdAt: d.createdAt,
 });
 
+/** Completed consultations and total earnings of every doctor, for the admin's list */
+export const doctorTotals = async () => {
+  const rows = await Booking.aggregate<{ _id: Types.ObjectId; consultations: number; earnedPaise: number }>([
+    { $match: { kind: 'real', doctor: { $ne: null } } },
+    {
+      $group: {
+        _id: '$doctor',
+        consultations: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        earnedPaise: { $sum: { $ifNull: ['$earnings.doctorPaise', 0] } },
+      },
+    },
+  ]);
+  return new Map(rows.map((r) => [String(r._id), { consultations: r.consultations, earned: paiseToRupees(r.earnedPaise) }]));
+};
+
+/** All doctors for the admin, newest first, with their totals */
+export const listDoctorsForAdmin = async () => {
+  await ensureDoctorCodes();
+  const [doctors, totals] = await Promise.all([Doctor.find().sort({ createdAt: -1 }), doctorTotals()]);
+  return doctors.map((d) => ({ ...adminDoctorView(d), ...(totals.get(String(d._id)) ?? { consultations: 0, earned: 0 }) }));
+};
+
 export const createDoctor = async (adminEmail: string, input: z.infer<typeof CreateDoctorSchema>) => {
   if (await Doctor.exists({ email: input.email })) throw new AppError(409, 'A doctor with this email already exists.', 'email_taken');
   const password = generateTempPassword();
   const validUntil = planEnd(input.plan.validUntil, null);
   const { plan, ...profile } = input;
+  // Older doctors get their numbers first, so a new doctor is always the latest
+  await ensureDoctorCodes();
   const doctor = await Doctor.create({
     ...profile,
-    doctorCode: await generateDoctorCode(),
+    doctorCode: await nextDoctorCode(),
     password,
     mustChangePassword: true,
     planValidUntil: validUntil,

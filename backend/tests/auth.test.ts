@@ -90,8 +90,6 @@ describe('doctor login', () => {
         email: 'new-doctor@test.in',
         qualification: 'MBBS',
         specialization: 'Physician',
-        registrationNumber: 'REG-NEW-1',
-        registrationCouncil: 'Delhi Medical Council',
         feeInr: 300,
         plan: { amountInr: 0 },
       });
@@ -136,11 +134,11 @@ describe('doctor login', () => {
     await request(app)
       .put('/api/doctor/profile')
       .set(bearer(doctor.token))
-      .send({ about: 'Hello', feeInr: 10, name: 'Hacker', registrationNumber: 'FAKE', isActive: false, planValidUntil: '2099-01-01' });
+      .send({ about: 'Hello', feeInr: 10, name: 'Hacker', doctorCode: 'FAKE', isActive: false, planValidUntil: '2099-01-01' });
     const me = await request(app).get('/api/doctor/me').set(bearer(doctor.token));
     expect(me.body.data.feeInr).toBe(500);
     expect(me.body.data.name).not.toBe('Hacker');
-    expect(me.body.data.registrationNumber).not.toBe('FAKE');
+    expect(me.body.data.doctorCode).toMatch(/^VC-DOC-\d{6}$/);
     expect(me.body.data.about).toBe('Hello');
   });
 });

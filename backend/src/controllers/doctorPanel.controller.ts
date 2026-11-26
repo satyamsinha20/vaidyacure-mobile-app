@@ -32,8 +32,6 @@ export const getMe = route(async (req: DoctorRequest, res: Response) => {
       name: d.name,
       qualification: d.qualification,
       specialization: d.specialization,
-      registrationNumber: d.registrationNumber,
-      registrationCouncil: d.registrationCouncil,
       experienceYears: d.experienceYears,
       about: d.about,
       languages: d.languages,

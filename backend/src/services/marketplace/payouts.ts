@@ -15,6 +15,7 @@ import { settlementPaidMail } from '../email/templates.js';
  * (and the doctor's share of a patient no-show) is an earning in the week it
  * happened. After the week ends the admin pays the doctor and records the
  * UTR; the earnings are then linked to that settlement and can never be paid twice.
+ * "Pay now" pays everything unpaid on any day, this week's earnings included.
  */
 const unsettledFilter = (doctorId: Types.ObjectId, beforeWeek?: string) => ({
   doctor: doctorId,
@@ -106,16 +107,22 @@ export const payoutOverview = async () => {
   };
 };
 
-export const settleDoctor = async (adminEmail: string, doctorId: string, input: { utr: string; note: string }) => {
+export const settleDoctor = async (adminEmail: string, doctorId: string, input: { utr: string; note: string; includeThisWeek?: boolean }) => {
   const doctor = await Doctor.findById(doctorId).select('name email');
   if (!doctor) throw new AppError(404, 'Doctor not found.');
   const currentWeek = istWeekStart(new Date());
   const settlement = await withTransaction(async (session) => {
-    const due = await Booking.find(unsettledFilter(doctor._id, currentWeek))
+    const due = await Booking.find(unsettledFilter(doctor._id, input.includeThisWeek ? undefined : currentWeek))
       .select('_id earnings')
       .session(session)
       .lean();
-    if (!due.length) throw new AppError(409, 'Nothing to pay: there are no unpaid earnings from finished weeks.', 'nothing_due');
+    if (!due.length) {
+      throw new AppError(
+        409,
+        input.includeThisWeek ? 'Nothing to pay: this doctor has no unpaid earnings.' : 'Nothing to pay: there are no unpaid earnings from finished weeks.',
+        'nothing_due'
+      );
+    }
     const amountPaise = due.reduce((sum, b) => sum + (b.earnings?.doctorPaise ?? 0), 0);
     const [created] = await Settlement.create(
       [

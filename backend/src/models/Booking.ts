@@ -55,10 +55,15 @@ export interface IDoctorReport {
   diagnosis: string;
   advice: string;
   medicines: IMedicineLine[];
+  /** Medicines written freely (e.g. "Paracetamol 650, 1 tablet morning and night") */
+  medicinesText?: string;
   tests: string[];
+  /** Tests written freely */
+  testsText?: string;
   followUpAdvice: string;
   sentAt: Date;
-  doctor: { name: string; qualification: string; specialization: string; registrationNumber: string; registrationCouncil: string };
+  /** registrationNumber is the doctor's VaidyaCure number (VC-DOC-000001) */
+  doctor: { name: string; qualification: string; specialization: string; registrationNumber: string };
 }
 
 export interface IRefund {

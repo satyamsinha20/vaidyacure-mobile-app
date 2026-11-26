@@ -87,12 +87,3 @@ export const generateTempPassword = (): string => {
   }
   return chars.join('');
 };
-
-/** A unique login id such as DR4821 */
-export const generateDoctorCode = async (): Promise<string> => {
-  for (let i = 0; i < 20; i++) {
-    const code = `DR${crypto.randomInt(1000, 10000)}`;
-    if (!(await Doctor.exists({ doctorCode: code }))) return code;
-  }
-  return `DR${crypto.randomInt(100000, 1000000)}`;
-};

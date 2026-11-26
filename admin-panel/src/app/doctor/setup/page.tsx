@@ -74,7 +74,7 @@ export default function DoctorSetupPage() {
           </div>
           <div>
             <h1 className="text-lg font-black">Welcome, {me.name}</h1>
-            <p className="text-[11px] text-gray-500">Doctor ID {me.doctorCode} · two quick steps before your panel opens</p>
+            <p className="text-[11px] text-gray-500">Reg. No. {me.doctorCode} · two quick steps before your panel opens</p>
           </div>
         </div>
         {error && <p className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">{error}</p>}
@@ -104,7 +104,7 @@ export default function DoctorSetupPage() {
             </p>
             <ul className="text-xs text-gray-700 space-y-1.5 list-disc pl-4 max-h-72 overflow-y-auto">
               <li>
-                I am a registered medical practitioner (registration {me.registrationNumber}, {me.registrationCouncil}) and will follow the
+                I am a registered medical practitioner (VaidyaCure Reg. No. {me.doctorCode}) and will follow the
                 Telemedicine Practice Guidelines, 2020, including what may be prescribed online.
               </li>
               <li>I will start every confirmed consultation within {me.rules.doctorJoinMinutes} minutes of its time. If I do not, the patient gets a full refund and I earn nothing for it.</li>

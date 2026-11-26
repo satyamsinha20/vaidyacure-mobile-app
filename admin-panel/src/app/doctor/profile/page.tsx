@@ -51,7 +51,7 @@ export default function ProfilePage() {
             <p className="text-xs text-gray-700">
               <b>{me.name}</b> · {me.qualification} · {me.specialization}
               <br />
-              Reg. {me.registrationNumber} ({me.registrationCouncil}) · {me.experienceYears} years
+              Reg. No. {me.doctorCode} · {me.experienceYears} years
               <br />
               Platform plan valid until {dateOnly(me.planValidUntil)}
             </p>

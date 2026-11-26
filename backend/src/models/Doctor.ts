@@ -18,6 +18,7 @@ export interface IPlanPayment {
 
 export interface IDoctor extends Document {
   _id: Types.ObjectId;
+  /** The doctor's only number (registration number), made by the server: VC-DOC-000001 … */
   doctorCode: string;
   email: string;
   password?: string;
@@ -27,8 +28,6 @@ export interface IDoctor extends Document {
   name: string;
   qualification: string;
   specialization: string;
-  registrationNumber: string;
-  registrationCouncil: string;
   experienceYears: number;
   about: string;
   languages: string[];
@@ -64,8 +63,6 @@ const DoctorSchema = new Schema<IDoctor>(
     name: { type: String, required: true, trim: true, maxlength: 60 },
     qualification: { type: String, required: true, trim: true, maxlength: 80 },
     specialization: { type: String, required: true, trim: true, maxlength: 60 },
-    registrationNumber: { type: String, required: true, trim: true, maxlength: 40 },
-    registrationCouncil: { type: String, required: true, trim: true, maxlength: 80 },
     experienceYears: { type: Number, default: 0, min: 0, max: 70 },
     about: { type: String, default: '', trim: true, maxlength: 300 },
     languages: [{ type: String, trim: true, maxlength: 20 }],

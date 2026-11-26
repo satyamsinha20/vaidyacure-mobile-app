@@ -39,7 +39,10 @@ export const ReportSchema = z.object({
     )
     .max(15)
     .default([]),
-  tests: z.array(z.string().trim().min(1).max(100)).max(15).default([]),
+  medicinesText: z.string().trim().max(5000).default(''),
+  // No length limit on tests: long test names used to stop the report from saving
+  tests: z.array(z.string().trim().min(1)).max(15).default([]),
+  testsText: z.string().trim().default(''),
   followUpAdvice: z.string().trim().max(500).default(''),
 });
 
@@ -158,8 +161,7 @@ export const sendReport = async (doctor: IDoctor, booking: IBooking, input: z.in
             name: doctor.name,
             qualification: doctor.qualification,
             specialization: doctor.specialization,
-            registrationNumber: doctor.registrationNumber,
-            registrationCouncil: doctor.registrationCouncil,
+            registrationNumber: doctor.doctorCode,
           },
         },
         earnings: paid

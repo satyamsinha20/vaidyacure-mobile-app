@@ -62,7 +62,10 @@ describe('a full paid consultation', () => {
         diagnosis: 'Viral fever',
         advice: 'Rest and fluids',
         medicines: [{ name: 'Paracetamol 500 mg', dose: '1 tablet', frequency: 'Every 6 hours if fever', duration: '3 days' }],
-        tests: ['CBC if fever stays beyond 3 days'],
+        medicinesText: 'Paracetamol 4 tablet, subah aur shaam',
+        // Tests have no length limit (a long test used to stop the report)
+        tests: ['CBC if fever stays beyond 3 days', `Dengue NS1 antigen test ${'and platelet count '.repeat(12)}`],
+        testsText: 'Sugar fasting test kal subah khali pet karwana',
       });
     expect(report.status).toBe(200);
     expect(report.body.data.status).toBe('completed');
@@ -71,7 +74,12 @@ describe('a full paid consultation', () => {
     // Only the patient (and the doctor) can read the report; the email never contains it
     const view = await patBooking(patient.token, id);
     expect(view.report.diagnosis).toBe('Viral fever');
-    expect(view.report.doctor.registrationNumber).toMatch(/^REG-/);
+    expect(view.report.medicinesText).toBe('Paracetamol 4 tablet, subah aur shaam');
+    expect(view.report.testsText).toBe('Sugar fasting test kal subah khali pet karwana');
+    expect(view.report.tests[1].length).toBeGreaterThan(100);
+    // The report shows the doctor's only number
+    expect(view.report.doctor.registrationNumber).toBe(doctor.code);
+    expect(view.report.doctor.registrationCouncil).toBeUndefined();
     const stranger = await loginPatient(app);
     expect((await request(app).get(`/api/patient/bookings/${id}`).set(bearer(stranger.token))).status).toBe(404);
     const mail = outbox.find((m) => m.to === patient.email && /report/i.test(m.subject));
@@ -289,6 +297,72 @@ describe('weekly payouts', () => {
     expect(earnings.body.data.totals).toMatchObject({ earned: 500, settled: 500, pending: 0 });
     expect(earnings.body.data.settlements[0].utr).toMatch(/^UTR12345/);
     expect(outbox.some((m) => m.to === doc2.email && /payout/i.test(m.subject))).toBe(true);
+  });
+
+  it('"Pay now" pays this week too, on any day, and the weekly payout then has nothing left', async () => {
+    const doc3 = await createReadyDoctor(app, admin.token);
+    const patient = await loginPatient(app);
+    const id = await confirmedBooking(app, patient.token, admin.token, doc3.id, 0);
+    await startBookingNow(id, 0);
+    await docSend(id, 'Hello', doc3.token);
+    await patSend(patient.token, id, 'Cough');
+    await request(app).post(`/api/doctor/bookings/${id}/report`).set(bearer(doc3.token)).send({ diagnosis: 'Dry cough' });
+
+    const settle = (body: Record<string, unknown>) =>
+      request(app).post(`/api/admin/market/payouts/${doc3.id}/settle`).set(bearer(admin.token)).send(body);
+    const overview = await request(app).get('/api/admin/market/payouts').set(bearer(admin.token));
+    expect(overview.body.data.doctors.find((d: { doctorId: string }) => d.doctorId === doc3.id)).toMatchObject({ payable: 0, thisWeek: 500 });
+
+    const now = await settle({ utr: 'UTR555001', includeThisWeek: true });
+    expect(now.status).toBe(200);
+    expect(now.body.data).toMatchObject({ amount: 500, consultations: 1 });
+    // Never twice: neither "Pay now" again nor the weekly payout
+    expect((await settle({ utr: 'UTR555002', includeThisWeek: true })).status).toBe(409);
+    await setFields(id, { 'earnings.weekStart': '2026-01-05' });
+    expect((await settle({ utr: 'UTR555003' })).status).toBe(409);
+    const after = await request(app).get('/api/admin/market/payouts').set(bearer(admin.token));
+    expect(after.body.data.doctors.some((d: { doctorId: string }) => d.doctorId === doc3.id)).toBe(false);
+    expect(after.body.data.history.find((h: { utr: string }) => h.utr === 'UTR555001')).toMatchObject({ amount: 500 });
+  });
+});
+
+describe('doctor registration numbers', () => {
+  const codeNumber = (code: string) => Number(code.replace('VC-DOC-', ''));
+
+  it('are made by the server in order (VC-DOC-000001 style), one per doctor', async () => {
+    const a = await createReadyDoctor(app, admin.token);
+    const b = await createReadyDoctor(app, admin.token);
+    expect(a.code).toMatch(/^VC-DOC-\d{6}$/);
+    expect(codeNumber(b.code)).toBe(codeNumber(a.code) + 1);
+    // The app shows the same number
+    const list = await request(app).get('/api/market/doctors');
+    expect(list.body.data.find((d: { id: string }) => d.id === b.id)).toMatchObject({ registrationNumber: b.code });
+  });
+
+  it('gives older doctors (DR codes) the next numbers, and the admin list shows totals', async () => {
+    const { Doctor } = await import('../src/models/Doctor.js');
+    const old = await Doctor.create({
+      doctorCode: 'DR1007',
+      email: 'old-doctor@test.in',
+      password: 'Old-pass-123',
+      name: 'Dr Old',
+      qualification: 'MBBS',
+      specialization: 'Physician',
+      feeInr: 400,
+    });
+    const highest = Math.max(...(await Doctor.find({ _id: { $ne: old._id } }).lean()).map((d) => codeNumber(d.doctorCode)));
+    const list = await request(app).get('/api/admin/market/doctors').set(bearer(admin.token));
+    expect(list.status).toBe(200);
+    const row = list.body.data.find((d: { id: string }) => d.id === String(old._id));
+    expect(codeNumber(row.doctorCode)).toBe(highest + 1);
+    expect(row).toMatchObject({ consultations: 0, earned: 0 });
+    // The main test doctor has completed consultations and earnings
+    const main = list.body.data.find((d: { id: string }) => d.id === doctor.id);
+    expect(main.consultations).toBeGreaterThan(0);
+    expect(main.earned).toBeGreaterThan(0);
+    // A new doctor comes after it
+    const next = await createReadyDoctor(app, admin.token);
+    expect(codeNumber(next.code)).toBe(highest + 2);
   });
 });
 

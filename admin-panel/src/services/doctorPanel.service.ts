@@ -12,13 +12,12 @@ const send = async <T,>(method: string, path: string, body: unknown = {}) =>
 
 export interface DoctorMe {
   id: string;
+  /** The doctor's only number (registration number): VC-DOC-000001 */
   doctorCode: string;
   email: string;
   name: string;
   qualification: string;
   specialization: string;
-  registrationNumber: string;
-  registrationCouncil: string;
   experienceYears: number;
   about: string;
   languages: string[];
@@ -49,7 +48,11 @@ export interface DoctorReport {
   diagnosis: string;
   advice: string;
   medicines: Array<{ name: string; dose: string; frequency: string; duration: string; notes: string }>;
+  /** Medicines written freely (older reports do not have it) */
+  medicinesText?: string;
   tests: string[];
+  /** Tests written freely (older reports do not have it) */
+  testsText?: string;
   followUpAdvice: string;
   sentAt?: string;
 }

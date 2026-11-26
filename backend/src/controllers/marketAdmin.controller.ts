@@ -33,6 +33,7 @@ import {
   adminDoctorView,
   createDoctor,
   decideFeeRequest,
+  listDoctorsForAdmin,
   readBankDetails,
   recordPlanPayment,
   resetDoctorPassword,
@@ -94,8 +95,7 @@ export const updateSettings = route(async (req: AuthenticatedRequest, res: Respo
 /* DOCTORS                                                                    */
 /* -------------------------------------------------------------------------- */
 export const listDoctors = route(async (_req: AuthenticatedRequest, res: Response) => {
-  const doctors = await Doctor.find().sort({ createdAt: -1 });
-  res.json({ status: 'success', data: doctors.map(adminDoctorView) });
+  res.json({ status: 'success', data: await listDoctorsForAdmin() });
 });
 
 export const addDoctor = route(async (req: AuthenticatedRequest, res: Response) => {
@@ -284,9 +284,22 @@ export const getPayouts = route(async (_req: AuthenticatedRequest, res: Response
 
 export const settle = route(async (req: AuthenticatedRequest, res: Response) => {
   const doctorId = parseInput(objectIdParam, req.params.doctorId);
-  const input = parseInput(z.object({ utr: z.string().trim().min(6).max(40), note: z.string().trim().max(200).default('') }), req.body);
+  const input = parseInput(
+    z.object({
+      utr: z.string().trim().min(6).max(40),
+      note: z.string().trim().max(200).default(''),
+      // true = "Pay now": also this week's earnings so far, not only finished weeks
+      includeThisWeek: z.boolean().default(false),
+    }),
+    req.body
+  );
   const settlement = await settleDoctor(adminOf(req).email, doctorId, input);
-  await audit(req, 'payout.settle', doctorId, `UTR ${input.utr} · ₹${paiseToRupees(settlement.amountPaise)}`);
+  await audit(
+    req,
+    'payout.settle',
+    doctorId,
+    `UTR ${input.utr} · ₹${paiseToRupees(settlement.amountPaise)}${input.includeThisWeek ? ' · paid now (with this week)' : ''}`
+  );
   res.json({ status: 'success', data: { id: String(settlement._id), amount: paiseToRupees(settlement.amountPaise), consultations: settlement.bookings.length } });
 });
 

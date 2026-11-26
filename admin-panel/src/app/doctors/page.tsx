@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CalendarPlus, Eye, KeyRound, Pencil, Plus, Power } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Eye, KeyRound, Landmark, Lock, LockOpen, Pencil, Plus } from "lucide-react";
 import AdminPageShell from "@/components/admin/AdminPageShell";
-import { Field, Modal, Spinner, dangerBtn, errorMessage, ghostBtn, inputClass, primaryBtn } from "@/components/ai-doctor/ui";
+import { Field, Modal, Spinner, errorMessage, ghostBtn, inputClass, primaryBtn } from "@/components/ai-doctor/ui";
 import { Card, CopyButton, Empty, Tabs, WeeklyHoursEditor, dateOnly, inr, when } from "@/components/market/ui";
 import { AccessState, PromptModal, useNow, useSuperAdmin, useToast } from "@/components/market/hooks";
 import {
@@ -22,8 +22,6 @@ const emptyProfile: DoctorProfileInput = {
   email: "",
   qualification: "",
   specialization: "",
-  registrationNumber: "",
-  registrationCouncil: "",
   experienceYears: 0,
   about: "",
   languages: ["Hindi", "English"],
@@ -36,6 +34,8 @@ const appPrice = (fee: number, commissionPercent: number) => fee + Math.round(fe
 
 const daysLeft = (iso: string | null, now: number) => (iso ? Math.ceil((new Date(iso).getTime() - now) / 86_400_000) : -1);
 
+const initials = (name: string) => name.replace(/^Dr\.?\s*/i, "").slice(0, 2).toUpperCase();
+
 export default function DoctorsPage() {
   const access = useSuperAdmin();
   const { toast, notify, dismiss } = useToast();
@@ -44,6 +44,7 @@ export default function DoctorsPage() {
   const [commission, setCommission] = useState(10);
   const now = useNow();
   const [loading, setLoading] = useState(true);
+  const [viewing, setViewing] = useState<RealDoctor | null>(null);
   const [editing, setEditing] = useState<RealDoctor | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [login, setLogin] = useState<DoctorLogin | null>(null);
@@ -71,6 +72,34 @@ export default function DoctorsPage() {
       await action();
       notify(message);
       await load();
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    }
+  };
+
+  /** Lock = ban: the doctor is logged out, cannot log in and cannot be booked until unlocked */
+  const toggleLock = (d: RealDoctor) => {
+    const question = d.isActive
+      ? `Lock ${d.name}? They are logged out at once, cannot log in, and patients cannot book them until you unlock.`
+      : `Unlock ${d.name}? They can log in again.`;
+    if (!window.confirm(question)) return;
+    act(() => marketService.updateDoctor(d.id, { isActive: !d.isActive }), d.isActive ? "Doctor locked and logged out." : "Doctor unlocked.");
+  };
+
+  const resetPassword = async (d: RealDoctor) => {
+    if (!window.confirm(`Reset ${d.name}'s password? Their current logins will stop working.`)) return;
+    setViewing(null);
+    try {
+      setLogin((await marketService.resetPassword(d.id)).login);
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    }
+  };
+
+  const openBank = async (d: RealDoctor) => {
+    setViewing(null);
+    try {
+      setBankFor({ doctor: d, bank: await marketService.getBank(d.id) });
     } catch (error) {
       notify(errorMessage(error), "error");
     }
@@ -117,115 +146,89 @@ export default function DoctorsPage() {
             ) : doctors.length === 0 ? (
               <Empty text="No real doctors yet. When a doctor pays the yearly platform fee, add them here to create their login." />
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {doctors.map((d) => {
-                  const left = daysLeft(d.planValidUntil, now);
-                  const issues = [
-                    !d.isActive && "Turned off",
-                    left < 0 && "Plan expired",
-                    d.mustChangePassword && "Has not logged in yet",
-                    !d.mustChangePassword && !d.termsAcceptedAt && "Terms not accepted",
-                    !d.availability.weekly.length && "No working hours",
-                  ].filter(Boolean) as string[];
-                  return (
-                    <div key={d.id} className="p-4 rounded-2xl bg-white border border-gray-200 space-y-2">
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-black" style={{ background: d.avatarColor }}>
-                          {d.name.replace(/^Dr\.?\s*/i, "").slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-black text-gray-900 truncate">
-                            {d.name} <span className="text-[11px] font-mono text-gray-500">{d.doctorCode}</span>
-                          </p>
-                          <p className="text-[11px] text-gray-600">
-                            {d.qualification} · {d.specialization} · Reg. {d.registrationNumber} ({d.registrationCouncil})
-                          </p>
-                          <p className="text-[11px] text-gray-600">
-                            Fee {inr(d.feeInr)} → app price {inr(appPrice(d.feeInr, commission))} · {d.consultMinutes} min · {d.email}
-                          </p>
-                        </div>
-                        {d.bookable ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Bookable</span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200">Not bookable</span>
-                        )}
-                      </div>
-                      <p className={`text-[11px] ${left < 0 ? "text-rose-700 font-bold" : left <= 30 ? "text-amber-700 font-bold" : "text-gray-500"}`}>
-                        Platform plan {left < 0 ? "expired" : "valid until"} {dateOnly(d.planValidUntil)}
-                        {left >= 0 && left <= 30 ? ` (${left} days left)` : ""} · last login {when(d.lastLoginAt)}
-                      </p>
-                      {issues.length > 0 && <p className="text-[11px] text-amber-700">⚠ {issues.join(" · ")}</p>}
-                      {d.requestedFeeInr !== null && (
-                        <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 flex flex-wrap items-center gap-2 text-[11px] text-amber-900">
-                          Fee change requested: {inr(d.feeInr)} → <b>{inr(d.requestedFeeInr)}</b>
-                          <button type="button" className={primaryBtn} onClick={() => act(() => marketService.decideFee(d.id, "approve"), "Fee updated.")}>
-                            Approve
+              <div className="rounded-2xl bg-white border border-gray-200 overflow-x-auto">
+                <table className="w-full min-w-[640px] text-xs">
+                  <thead>
+                    <tr className="text-left text-[10.5px] text-gray-500 uppercase bg-gray-50">
+                      <th className="px-3 py-2.5 font-bold">Reg. No.</th>
+                      <th className="px-3 py-2.5 font-bold">Name</th>
+                      <th className="px-3 py-2.5 font-bold text-right">Total consultations</th>
+                      <th className="px-3 py-2.5 font-bold text-right">Fee</th>
+                      <th className="px-3 py-2.5 font-bold text-right">Earning</th>
+                      <th className="px-3 py-2.5 font-bold text-center">View</th>
+                      <th className="px-3 py-2.5 font-bold text-center">Lock</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {doctors.map((d) => (
+                      <tr key={d.id} className={`border-t border-gray-100 ${d.isActive ? "" : "bg-rose-50/50"}`}>
+                        <td className="px-3 py-2.5 font-mono text-gray-700 whitespace-nowrap">{d.doctorCode}</td>
+                        <td className="px-3 py-2.5 font-bold text-gray-900">{d.name}</td>
+                        <td className="px-3 py-2.5 text-right">{d.consultations}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          {inr(d.feeInr)}
+                          {d.requestedFeeInr !== null && (
+                            <span className="block text-[10px] font-bold text-amber-700">asks {inr(d.requestedFeeInr)}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-bold whitespace-nowrap">{inr(d.earned)}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <button
+                            type="button"
+                            title="View details"
+                            aria-label={`View ${d.name}`}
+                            onClick={() => setViewing(d)}
+                            className="inline-flex p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer"
+                          >
+                            <Eye className="w-4 h-4" />
                           </button>
-                          <button type="button" className={ghostBtn} onClick={() => act(() => marketService.decideFee(d.id, "reject"), "Fee request rejected.")}>
-                            Reject
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <button
+                            type="button"
+                            title={d.isActive ? "Lock (ban) this doctor" : "Unlock this doctor"}
+                            aria-label={d.isActive ? `Lock ${d.name}` : `Unlock ${d.name}`}
+                            onClick={() => toggleLock(d)}
+                            className={`inline-flex items-center gap-1 p-1.5 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                              d.isActive ? "border-gray-200 text-gray-500 hover:bg-gray-50" : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                            }`}
+                          >
+                            {d.isActive ? <LockOpen className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                            {!d.isActive && "Locked"}
                           </button>
-                        </div>
-                      )}
-                      <p className="text-[11px] text-gray-500">
-                        Payout details: {d.bankHint || "not added yet"}
-                        {d.bankChanged && <span className="ml-1 font-bold text-amber-700">(changed, check before paying)</span>}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        <button
-                          type="button"
-                          className={ghostBtn}
-                          onClick={() => {
-                            setEditing(d);
-                            setFormOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-3.5 h-3.5" /> Edit
-                        </button>
-                        <button type="button" className={ghostBtn} onClick={() => setRenewFor(d)}>
-                          <CalendarPlus className="w-3.5 h-3.5" /> Record plan payment
-                        </button>
-                        <button
-                          type="button"
-                          className={ghostBtn}
-                          onClick={async () => {
-                            if (!window.confirm(`Reset ${d.name}'s password? Their current logins will stop working.`)) return;
-                            try {
-                              setLogin((await marketService.resetPassword(d.id)).login);
-                            } catch (error) {
-                              notify(errorMessage(error), "error");
-                            }
-                          }}
-                        >
-                          <KeyRound className="w-3.5 h-3.5" /> Reset password
-                        </button>
-                        <button
-                          type="button"
-                          className={ghostBtn}
-                          onClick={async () => {
-                            try {
-                              setBankFor({ doctor: d, bank: await marketService.getBank(d.id) });
-                            } catch (error) {
-                              notify(errorMessage(error), "error");
-                            }
-                          }}
-                        >
-                          <Eye className="w-3.5 h-3.5" /> Payout details
-                        </button>
-                        <button
-                          type="button"
-                          className={d.isActive ? dangerBtn : primaryBtn}
-                          onClick={() => act(() => marketService.updateDoctor(d.id, { isActive: !d.isActive }), d.isActive ? "Doctor turned off and logged out." : "Doctor turned on.")}
-                        >
-                          <Power className="w-3.5 h-3.5" /> {d.isActive ? "Turn off" : "Turn on"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ))}
           {tab === "rules" && <RulesTab notify={notify} />}
         </>
+      )}
+
+      {viewing && (
+        <DoctorDetails
+          doctor={viewing}
+          commission={commission}
+          now={now}
+          onClose={() => setViewing(null)}
+          onEdit={() => {
+            setEditing(viewing);
+            setViewing(null);
+            setFormOpen(true);
+          }}
+          onRenew={() => {
+            setRenewFor(viewing);
+            setViewing(null);
+          }}
+          onResetPassword={() => resetPassword(viewing)}
+          onBank={() => openBank(viewing)}
+          onFeeDecision={(decision) => {
+            setViewing(null);
+            act(() => marketService.decideFee(viewing.id, decision), decision === "approve" ? "Fee updated." : "Fee request rejected.");
+          }}
+        />
       )}
 
       {formOpen && (
@@ -236,7 +239,7 @@ export default function DoctorsPage() {
           onSaved={async (createdLogin) => {
             setFormOpen(false);
             if (createdLogin) setLogin(createdLogin);
-            notify(editing ? "Doctor updated." : "Doctor created.");
+            notify(createdLogin ? `Doctor created: ${createdLogin.doctorCode}` : "Doctor updated.");
             await load();
           }}
           notify={notify}
@@ -344,6 +347,131 @@ export default function DoctorsPage() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* ONE DOCTOR (eye button)                                                    */
+/* -------------------------------------------------------------------------- */
+function DoctorDetails({
+  doctor: d,
+  commission,
+  now,
+  onClose,
+  onEdit,
+  onRenew,
+  onResetPassword,
+  onBank,
+  onFeeDecision,
+}: {
+  doctor: RealDoctor;
+  commission: number;
+  now: number;
+  onClose: () => void;
+  onEdit: () => void;
+  onRenew: () => void;
+  onResetPassword: () => void;
+  onBank: () => void;
+  onFeeDecision: (decision: "approve" | "reject") => void;
+}) {
+  const left = daysLeft(d.planValidUntil, now);
+  const issues = [
+    !d.isActive && "Locked",
+    left < 0 && "Plan expired",
+    d.mustChangePassword && "Has not logged in yet",
+    !d.mustChangePassword && !d.termsAcceptedAt && "Terms not accepted",
+    !d.availability.weekly.length && "No working hours",
+  ].filter(Boolean) as string[];
+  const rows: Array<[string, React.ReactNode]> = [
+    ["Registration number", <span key="code" className="font-mono">{d.doctorCode}</span>],
+    ["Email", d.email],
+    ["Qualification", d.qualification],
+    ["Specialization", d.specialization],
+    ["Experience", `${d.experienceYears} years`],
+    ["Languages", d.languages.join(", ") || "—"],
+    ["Fee", `${inr(d.feeInr)} → app price ${inr(appPrice(d.feeInr, commission))}`],
+    ["Consultation length", `${d.consultMinutes} min`],
+    ["Total consultations", String(d.consultations)],
+    ["Total earning", inr(d.earned)],
+    [
+      "Platform plan",
+      <span key="plan" className={left < 0 ? "text-rose-700 font-bold" : left <= 30 ? "text-amber-700 font-bold" : ""}>
+        {left < 0 ? "Expired" : "Valid until"} {dateOnly(d.planValidUntil)}
+        {left >= 0 && left <= 30 ? ` (${left} days left)` : ""}
+      </span>,
+    ],
+    ["Last login", when(d.lastLoginAt)],
+    [
+      "Payout details",
+      <span key="bank">
+        {d.bankHint || "Not added yet"}
+        {d.bankChanged && <b className="block text-amber-700">Changed, check before paying</b>}
+      </span>,
+    ],
+  ];
+
+  return (
+    <Modal
+      title={d.name}
+      subtitle={`Reg. No. ${d.doctorCode}`}
+      onClose={onClose}
+      footer={
+        <button type="button" className={ghostBtn} onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-black shrink-0" style={{ background: d.avatarColor }}>
+          {initials(d.name)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-gray-900 truncate">{d.name}</p>
+          <p className="text-[11px] text-gray-600">
+            {d.qualification} · {d.specialization}
+          </p>
+        </div>
+        {d.bookable ? (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Bookable</span>
+        ) : (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200">Not bookable</span>
+        )}
+      </div>
+      {issues.length > 0 && <p className="text-[11px] text-amber-700">⚠ {issues.join(" · ")}</p>}
+      {d.requestedFeeInr !== null && (
+        <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 flex flex-wrap items-center gap-2 text-[11px] text-amber-900">
+          Fee change requested: {inr(d.feeInr)} → <b>{inr(d.requestedFeeInr)}</b>
+          <button type="button" className={primaryBtn} onClick={() => onFeeDecision("approve")}>
+            Approve
+          </button>
+          <button type="button" className={ghostBtn} onClick={() => onFeeDecision("reject")}>
+            Reject
+          </button>
+        </div>
+      )}
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-[10.5px] text-gray-500 font-bold">{label}</dt>
+            <dd className="text-xs text-gray-900 break-words">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex flex-wrap gap-1.5 pt-3 border-t border-gray-100">
+        <button type="button" className={ghostBtn} onClick={onEdit}>
+          <Pencil className="w-3.5 h-3.5" /> Edit
+        </button>
+        <button type="button" className={ghostBtn} onClick={onRenew}>
+          <CalendarPlus className="w-3.5 h-3.5" /> Record plan payment
+        </button>
+        <button type="button" className={ghostBtn} onClick={onResetPassword}>
+          <KeyRound className="w-3.5 h-3.5" /> Reset password
+        </button>
+        <button type="button" className={ghostBtn} onClick={onBank}>
+          <Landmark className="w-3.5 h-3.5" /> Payout details
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* ADD / EDIT DOCTOR                                                          */
 /* -------------------------------------------------------------------------- */
 function DoctorForm({
@@ -373,8 +501,6 @@ function DoctorForm({
         email: form.email,
         qualification: form.qualification,
         specialization: form.specialization,
-        registrationNumber: form.registrationNumber,
-        registrationCouncil: form.registrationCouncil,
         experienceYears: Number(form.experienceYears) || 0,
         about: form.about,
         languages: form.languages,
@@ -402,7 +528,7 @@ function DoctorForm({
   return (
     <Modal
       title={doctor ? `Edit ${doctor.name}` : "Add a real doctor"}
-      subtitle={doctor ? doctor.doctorCode : "Check the registration number with the State Medical Council / NMC before adding."}
+      subtitle={doctor ? `Reg. No. ${doctor.doctorCode}` : "The registration number (VC-DOC-000001, VC-DOC-000002 …) is created automatically."}
       onClose={onClose}
       footer={
         <>
@@ -427,12 +553,6 @@ function DoctorForm({
         </Field>
         <Field label="Specialization">
           <input className={inputClass} value={form.specialization} onChange={(e) => set("specialization", e.target.value)} placeholder="General Physician" />
-        </Field>
-        <Field label="Registration number">
-          <input className={inputClass} value={form.registrationNumber} onChange={(e) => set("registrationNumber", e.target.value)} />
-        </Field>
-        <Field label="Medical council">
-          <input className={inputClass} value={form.registrationCouncil} onChange={(e) => set("registrationCouncil", e.target.value)} placeholder="Bihar Medical Council" />
         </Field>
         <Field label="Doctor's fee (₹)" hint={`App price: ${inr(appPrice(Number(form.feeInr || 0), commission))} (fee + ${commission}% commission). Multiple of ₹10.`}>
           <input type="number" min={10} step={10} className={inputClass} value={form.feeInr} onChange={(e) => set("feeInr", Number(e.target.value))} />

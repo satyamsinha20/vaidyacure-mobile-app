@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { BadgeIndianRupee, RefreshCw } from "lucide-react";
+import { BadgeIndianRupee, RefreshCw, Zap } from "lucide-react";
 import AdminPageShell from "@/components/admin/AdminPageShell";
 import { Field, Modal, Spinner, errorMessage, ghostBtn, inputClass, primaryBtn } from "@/components/ai-doctor/ui";
 import { Card, CopyButton, Empty, dateOnly, inr, when } from "@/components/market/ui";
@@ -15,7 +15,8 @@ export default function PayoutsPage() {
   const [history, setHistory] = useState<SettlementRow[]>([]);
   const [currentWeek, setCurrentWeek] = useState("");
   const [loading, setLoading] = useState(true);
-  const [paying, setPaying] = useState<{ row: PayoutRow; bank: BankDetails | null } | null>(null);
+  // payNow = also this week's earnings so far (any day), not only finished weeks
+  const [paying, setPaying] = useState<{ row: PayoutRow; bank: BankDetails | null; payNow: boolean } | null>(null);
   const [utr, setUtr] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,11 +38,11 @@ export default function PayoutsPage() {
     if (access === "allowed") load();
   }, [access, load]);
 
-  const openPay = async (row: PayoutRow) => {
+  const openPay = async (row: PayoutRow, payNow: boolean) => {
     try {
       setUtr("");
       setNote("");
-      setPaying({ row, bank: await marketService.getBank(row.doctorId) });
+      setPaying({ row, bank: await marketService.getBank(row.doctorId), payNow });
     } catch (error) {
       notify(errorMessage(error), "error");
     }
@@ -51,7 +52,7 @@ export default function PayoutsPage() {
     if (!paying) return;
     setBusy(true);
     try {
-      const r = await marketService.settle(paying.row.doctorId, utr, note);
+      const r = await marketService.settle(paying.row.doctorId, utr, note, paying.payNow);
       notify(`${inr(r.amount)} for ${r.consultations} consultations marked as paid. The doctor was emailed.`);
       setPaying(null);
       await load();
@@ -84,7 +85,7 @@ export default function PayoutsPage() {
         <>
           <Card
             title="To pay now"
-            subtitle={`Finished weeks only (Monday–Sunday, India time). This week started ${dateOnly(`${currentWeek}T12:00:00+05:30`)} and is paid next week.`}
+            subtitle={`Pay: finished weeks (Monday–Sunday, India time). This week started ${dateOnly(`${currentWeek}T12:00:00+05:30`)}. Pay now: everything unpaid till today, this week included.`}
           >
             {loading ? (
               <Spinner />
@@ -108,8 +109,17 @@ export default function PayoutsPage() {
                       <p className="text-lg font-black text-gray-900">{inr(r.payable)}</p>
                       <p className="text-[10.5px] text-gray-500">{r.consultations} consultations</p>
                     </div>
-                    <button type="button" className={primaryBtn} disabled={r.payable <= 0} onClick={() => openPay(r)}>
+                    <button type="button" className={primaryBtn} disabled={r.payable <= 0} onClick={() => openPay(r, false)}>
                       <BadgeIndianRupee className="w-3.5 h-3.5" /> Pay
+                    </button>
+                    <button
+                      type="button"
+                      className={ghostBtn}
+                      disabled={r.payable + r.thisWeek <= 0}
+                      title="Pay everything unpaid till today, this week included"
+                      onClick={() => openPay(r, true)}
+                    >
+                      <Zap className="w-3.5 h-3.5" /> Pay now {inr(r.payable + r.thisWeek)}
                     </button>
                   </div>
                 ))}
@@ -156,8 +166,12 @@ export default function PayoutsPage() {
 
       {paying && (
         <Modal
-          title={`Pay ${paying.row.name}: ${inr(paying.row.payable)}`}
-          subtitle="Send the money from your bank / UPI app first, then record the UTR here."
+          title={`Pay ${paying.row.name}: ${inr(paying.payNow ? paying.row.payable + paying.row.thisWeek : paying.row.payable)}`}
+          subtitle={
+            paying.payNow
+              ? "Pay now: everything unpaid till today, this week included. Send the money from your bank / UPI app first, then record the UTR here."
+              : "Send the money from your bank / UPI app first, then record the UTR here."
+          }
           onClose={() => setPaying(null)}
           footer={
             <>

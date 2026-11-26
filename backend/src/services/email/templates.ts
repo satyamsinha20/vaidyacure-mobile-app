@@ -162,10 +162,10 @@ export const TEMPLATE_DEFS = {
   doctor_welcome: {
     name: 'Doctor account created',
     description: 'Never contains the password (the admin shares it privately).',
-    placeholders: { name: "Doctor's name", doctorCode: 'Doctor ID (e.g. DR4821)', panelUrl: 'Login page link' },
+    placeholders: { name: "Doctor's name", doctorCode: 'Registration number (e.g. VC-DOC-000001)', panelUrl: 'Login page link' },
     required: [],
     subject: 'Your VaidyaCure doctor account is ready',
-    body: 'Welcome, {{name}}.\n\nYour doctor ID is {{doctorCode}}. Log in with this email address.\nYour temporary password will be shared with you by the VaidyaCure admin. You must change it on your first login.\n\nDoctor panel: {{panelUrl}}',
+    body: 'Welcome, {{name}}.\n\nYour registration number is {{doctorCode}}. Log in with this email address.\nYour temporary password will be shared with you by the VaidyaCure admin. You must change it on your first login.\n\nDoctor panel: {{panelUrl}}',
   },
 } satisfies Record<string, TemplateDef>;
 
@@ -185,7 +185,7 @@ export const SAMPLE_VALUES: Record<string, string> = {
   count: '5',
   reason: 'The amount did not match',
   name: 'Dr. Neha Singh',
-  doctorCode: 'DR4821',
+  doctorCode: 'VC-DOC-000001',
   panelUrl: 'https://admin-panel-fawn-sigma-31.vercel.app/login',
   paymentLine: 'Paid: ₹550',
   bookingLine: 'The payment has been verified by VaidyaCure.',

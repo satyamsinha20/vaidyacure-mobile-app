@@ -91,8 +91,6 @@ export const createReadyDoctor = async (app: Express, adminToken: string, overri
       email: `doctor-${suffix}@test.in`,
       qualification: 'MBBS, MD',
       specialization: 'General Physician',
-      registrationNumber: `REG-${suffix}`,
-      registrationCouncil: 'Bihar Medical Council',
       feeInr: 500,
       consultMinutes: 15,
       plan: { amountInr: 1000, utr: '123456789012' },
