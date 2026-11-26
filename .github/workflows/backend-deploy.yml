@@ -8,37 +8,20 @@ on:
       - 'backend/**'
       - '.github/workflows/backend-deploy.yml'
 
+concurrency:
+  group: vaidyacure-deployment
+  cancel-in-progress: false
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install Dependencies
-        working-directory: backend
-        run: npm ci
-
-      - name: Build Backend
-        working-directory: backend
-        run: npm run build
-
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /var/www/vaidyacure
-            git pull origin main
-            cd backend
-            npm ci
-            npm run build
-            pm2 restart vaidyacure-backend
+      - name: Deploy Backend
+        run: |
+          cd /var/www/vaidyacure
+          git pull origin main
+          cd backend
+          npm ci
+          npm run build
+          pm2 restart vaidyacure-backend --update-env
