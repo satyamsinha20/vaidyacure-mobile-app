@@ -2,9 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import Sidebar from "@/components/dashboard/Sidebar";
-import TopNav from "@/components/dashboard/TopNav";
-import { authService, AdminUser } from "@/services/auth.service";
 import { remedyService } from "@/services/remedy.service";
 import {
   Sprout,
@@ -61,8 +58,6 @@ interface RemedyCategoryViewProps {
 }
 
 export default function RemedyCategoryView({ config }: RemedyCategoryViewProps) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [items, setItems] = useState<RemedyItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -91,15 +86,8 @@ export default function RemedyCategoryView({ config }: RemedyCategoryViewProps) 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Load admin user & shared remedies for this category from backend
+  // Load the shared remedies for this category from the backend
   useEffect(() => {
-    const cached = authService.getStoredUser();
-    if (cached) setAdminUser(cached);
-    authService
-      .getMe()
-      .then((u) => setAdminUser(u))
-      .catch(() => {});
-
     // 1. Instant load from local cache if available
     try {
       const storageKey = `vaidya_remedies_items_${config.slug}`;
@@ -186,24 +174,9 @@ export default function RemedyCategoryView({ config }: RemedyCategoryViewProps) 
     return Array.from(list);
   }, [items]);
 
+  // The top bar and sidebar come from the (admin) layout
   return (
-    <div className="h-screen overflow-hidden bg-[#F3F7F5] flex flex-col text-gray-900 selection:bg-emerald-500/20">
-      {/* Top Navigation */}
-      <TopNav
-        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        adminUser={adminUser}
-      />
-
-      <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Sidebar with active category tree */}
-        <Sidebar
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          adminUser={adminUser}
-        />
-
-        {/* Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden lg:pl-64 transition-all duration-300">
+    <>
           <main className="flex-1 p-3 sm:p-4 lg:p-4.5 overflow-hidden flex flex-col max-w-[1520px] w-full mx-auto gap-2.5 sm:gap-3 h-full min-h-0">
             {/* Header with Breadcrumb & Nature Heals Better Calligraphy */}
             <div className="flex items-start justify-between gap-4 shrink-0">
@@ -723,8 +696,6 @@ export default function RemedyCategoryView({ config }: RemedyCategoryViewProps) 
               )}
             </div>
           </main>
-        </div>
-      </div>
 
       {/* View Details Modal */}
       {selectedViewItem && (
@@ -977,6 +948,6 @@ export default function RemedyCategoryView({ config }: RemedyCategoryViewProps) 
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

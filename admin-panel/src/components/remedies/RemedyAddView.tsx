@@ -3,8 +3,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Sidebar from "@/components/dashboard/Sidebar";
-import TopNav from "@/components/dashboard/TopNav";
 import { authService, AdminUser } from "@/services/auth.service";
 import { remedyService } from "@/services/remedy.service";
 import { RemedyCategoryConfig } from "./RemedyCategoryView";
@@ -36,7 +34,6 @@ interface RemedyAddViewProps {
 export default function RemedyAddView({ config }: RemedyAddViewProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
 
   // Form State
@@ -273,24 +270,8 @@ export default function RemedyAddView({ config }: RemedyAddViewProps) {
     router.push(`/remedies/${config.slug}`);
   };
 
+  // The top bar and sidebar come from the (admin) layout
   return (
-    <div className="h-screen overflow-hidden bg-[#F3F7F5] flex flex-col text-gray-900 selection:bg-emerald-500/20">
-      {/* Top Navigation */}
-      <TopNav
-        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        adminUser={adminUser}
-      />
-
-      <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Sidebar */}
-        <Sidebar
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          adminUser={adminUser}
-        />
-
-        {/* Content Area - Fits 100% on Single Screen */}
-        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden lg:pl-64 transition-all duration-300">
           <main className="flex-1 p-3 sm:p-3.5 lg:p-4 overflow-hidden flex flex-col max-w-[1600px] w-full mx-auto gap-2.5 h-full min-h-0">
             {/* Header with Back, Title & Quick Actions */}
             <div className="flex items-center justify-between gap-3 shrink-0 pb-2 border-b border-gray-200/70">
@@ -850,8 +831,5 @@ export default function RemedyAddView({ config }: RemedyAddViewProps) {
               </div>
             </form>
           </main>
-        </div>
-      </div>
-    </div>
   );
 }

@@ -1,5 +1,6 @@
 import Cookies from 'js-cookie';
 import { apiRequest } from '../lib/api';
+import { clearCache } from '../lib/cache';
 import { APP_CONFIG } from '../lib/constants';
 
 export interface AdminUser {
@@ -135,6 +136,7 @@ export const authService = {
    */
   async logout(): Promise<void> {
     meCache = null;
+    clearCache();
     try {
       await apiRequest('/auth/logout', { method: 'POST' }).catch(() => {});
     } finally {

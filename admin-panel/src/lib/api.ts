@@ -1,5 +1,6 @@
 import Cookies from 'js-cookie';
 import { APP_CONFIG } from './constants';
+import { clearCache } from './cache';
 
 export interface ApiResponse<T = any> {
   status: 'success' | 'error' | 'ok';
@@ -54,6 +55,9 @@ export async function apiRequest<T = any>(
         data
       );
     }
+
+    // Something changed on the server: remembered page data may be old now
+    if ((options.method || 'GET').toUpperCase() !== 'GET') clearCache();
 
     return data as T;
   } catch (err: any) {
