@@ -18,6 +18,7 @@ import {
   Bot,
 } from "lucide-react";
 import { authService, AdminUser } from "@/services/auth.service";
+import { useSessionUser } from "@/components/app/SessionProvider";
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -63,13 +64,16 @@ export default function Sidebar({ isOpen, onClose, adminUser }: SidebarProps) {
   const isRemediesOpen = remediesToggle && remediesToggle.path === pathname ? remediesToggle.open : onRemediesPage;
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const sessionUser = useSessionUser();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const user = adminUser || (mounted ? authService.getStoredUser() : null);
-  const isSuperAdmin = Boolean(mounted && user?.role === "superadmin");
+  // The login cookies (read on the server) decide the menu from the first paint, so
+  // super admin items never appear late; the stored profile is only a fallback
+  const user = adminUser || sessionUser || (mounted ? authService.getStoredUser() : null);
+  const isSuperAdmin = user?.role === "superadmin";
 
   return (
     <>

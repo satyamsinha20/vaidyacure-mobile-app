@@ -3,17 +3,27 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 import { authService } from "@/services/auth.service";
+import { ApiError } from "@/lib/api";
+import { useSessionUser } from "@/components/app/SessionProvider";
 import { Field, Modal, Spinner, inputClass, primaryBtn, ghostBtn } from "@/components/ai-doctor/ui";
 import type { Toast } from "@/components/admin/AdminPageShell";
 
 /** Super admin check for money pages (the backend enforces the same rule) */
 export function useSuperAdmin() {
-  const [access, setAccess] = useState<"checking" | "allowed" | "denied">("checking");
+  const sessionUser = useSessionUser();
+  // The login cookies answer at once (no "Checking access…" wait); the backend confirms
+  const [access, setAccess] = useState<"checking" | "allowed" | "denied">(() =>
+    sessionUser ? (sessionUser.role === "superadmin" ? "allowed" : "denied") : "checking"
+  );
   useEffect(() => {
     authService
       .getMe()
       .then((u) => setAccess(u.role === "superadmin" ? "allowed" : "denied"))
-      .catch(() => setAccess("denied"));
+      .catch((error: unknown) => {
+        // A rejected login always closes the page; a network hiccup keeps the cookie's answer
+        const rejected = error instanceof ApiError && (error.status === 401 || error.status === 403);
+        setAccess((current) => (current === "checking" || rejected ? "denied" : current));
+      });
   }, []);
   return access;
 }

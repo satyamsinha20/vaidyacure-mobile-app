@@ -20,6 +20,7 @@ import {
 import { authService, AdminUser, DEFAULT_ADMIN } from "@/services/auth.service";
 import { contentService, FEEDBACK_COUNT_EVENT } from "@/services/content.service";
 import { ROUTES } from "@/lib/constants";
+import { useSessionUser } from "@/components/app/SessionProvider";
 
 // New-feedback count is shared across page changes and refreshed at most once a minute
 let feedbackCountCache: { value: number; at: number } | null = null;
@@ -36,6 +37,7 @@ export default function TopNav({ onToggleSidebar, adminUser }: TopNavProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
   const [clientUser, setClientUser] = useState<AdminUser | null>(null);
+  const sessionUser = useSessionUser();
   const [newFeedback, setNewFeedback] = useState(() => feedbackCountCache?.value ?? 0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -102,10 +104,14 @@ export default function TopNav({ onToggleSidebar, adminUser }: TopNavProps) {
     }
   };
 
-  // Determine active user and role safely for hydration
+  // The login cookies (read on the server) give the same user on the server and in the
+  // browser, so the name and the super admin links are right from the first paint
+  const knownUser = adminUser || clientUser || sessionUser;
   const user: AdminUser =
-    adminUser || clientUser || authService.getStoredUser() || DEFAULT_ADMIN;
-  const isSuperAdmin = Boolean(mounted && user.role === "superadmin");
+    knownUser || (mounted ? authService.getStoredUser() : null) || DEFAULT_ADMIN;
+  const isSuperAdmin = knownUser
+    ? knownUser.role === "superadmin"
+    : Boolean(mounted && user.role === "superadmin");
   const roleLabel =
     user.role === "superadmin"
       ? "Super Admin"

@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
+import { readSessionUser } from "@/lib/session";
+import { SessionProvider } from "@/components/app/SessionProvider";
+import { NumberInputGuard } from "@/components/app/NumberInputGuard";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -14,18 +17,23 @@ export const metadata: Metadata = {
   description: "High-performance admin portal for managing medicines, orders, doctors, and healthcare operations.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Login cookies, read on the server: menus render for the right role from the first paint
+  const sessionUser = await readSessionUser();
   return (
     <html
       lang="en"
       className={`${montserrat.variable} h-full antialiased font-sans`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
-        {children}
+        <SessionProvider user={sessionUser}>
+          <NumberInputGuard />
+          {children}
+        </SessionProvider>
       </body>
     </html>
   );

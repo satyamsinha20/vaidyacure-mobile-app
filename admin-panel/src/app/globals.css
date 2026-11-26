@@ -193,3 +193,13 @@
 .dark .liquid-specular-sheen {
   background: linear-gradient(175deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.02) 30%, transparent 60%);
 }
+/* Number fields: values are typed, never changed with the mouse (no up/down arrows) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
