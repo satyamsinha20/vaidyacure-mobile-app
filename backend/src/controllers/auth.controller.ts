@@ -28,12 +28,11 @@ const burnPasswordCheck = async (password: string) => {
 };
 
 /**
- * Real doctors use the same login page with their email or doctor ID (DR1234).
+ * Real doctors use the same login page with the email the admin created for them.
  * They get a "doctor" token that admin routes never accept.
  */
-const loginDoctor = async (identifier: string, password: string, res: Response): Promise<boolean> => {
-  const byCode = /^dr\d{4,6}$/i.test(identifier);
-  const doctor = await Doctor.findOne(byCode ? { doctorCode: identifier.toUpperCase() } : { email: identifier.toLowerCase() }).select('+password');
+const loginDoctor = async (email: string, password: string, res: Response): Promise<boolean> => {
+  const doctor = await Doctor.findOne({ email: email.toLowerCase() }).select('+password');
   if (!doctor) return false;
   if (!(await doctor.comparePassword(password))) return false;
   if (!doctor.isActive) {

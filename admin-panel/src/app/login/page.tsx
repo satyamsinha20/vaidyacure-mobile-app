@@ -95,10 +95,6 @@ function LoginForm() {
           <p className="text-xs text-gray-500 font-medium mt-0.5">
             Healing Naturally, Living Better
           </p>
-
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold tracking-wider uppercase border border-emerald-200/80 mt-2 shadow-2xs">
-            <span>Admin, Operations & Doctor Portal</span>
-          </div>
         </div>
 
         {/* Clean White Card matching Dashboard aesthetics */}
@@ -133,17 +129,17 @@ function LoginForm() {
               {/* Email Input */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                  Email or Doctor ID
+                  Email
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
-                    type="text"
+                    type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     autoComplete="username"
-                    placeholder="admin@… or DR1234"
+                    placeholder="Enter your email"
                     className="w-full pl-10 pr-4 h-11 text-xs rounded-xl bg-gray-50/80 border border-gray-200 text-gray-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
                   />
                 </div>
@@ -214,13 +210,6 @@ function LoginForm() {
               </button>
             </form>
           )}
-
-          {/* Card Footer */}
-          <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-            <p className="text-[11px] text-gray-400 font-medium">
-              VaidyaCure Clinical Systems • Authorized Personnel Only
-            </p>
-          </div>
         </div>
       </div>
     </main>

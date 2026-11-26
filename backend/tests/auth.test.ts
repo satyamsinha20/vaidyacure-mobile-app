@@ -65,14 +65,14 @@ describe('token types never cross over', () => {
 });
 
 describe('doctor login', () => {
-  it('works with the doctor ID or the email, and fails with a wrong password', async () => {
-    const byCode = await request(app).post('/api/auth/login').send({ email: doctor.code, password: doctor.password });
-    expect(byCode.status).toBe(200);
-    expect(byCode.body.accountType).toBe('doctor');
-    expect(byCode.body.admin.role).toBe('doctor');
+  it('works with the email only (not the doctor ID), and fails with a wrong password', async () => {
     const byEmail = await request(app).post('/api/auth/login').send({ email: doctor.email, password: doctor.password });
     expect(byEmail.status).toBe(200);
-    const wrong = await request(app).post('/api/auth/login').send({ email: doctor.code, password: 'Wrong-pass-1' });
+    expect(byEmail.body.accountType).toBe('doctor');
+    expect(byEmail.body.admin.role).toBe('doctor');
+    const byCode = await request(app).post('/api/auth/login').send({ email: doctor.code, password: doctor.password });
+    expect(byCode.status).toBe(401);
+    const wrong = await request(app).post('/api/auth/login').send({ email: doctor.email, password: 'Wrong-pass-1' });
     expect(wrong.status).toBe(401);
   });
 
@@ -128,7 +128,7 @@ describe('doctor login', () => {
     const off = await request(app).put(`/api/admin/market/doctors/${other.id}`).set(bearer(admin.token)).send({ isActive: false });
     expect(off.status).toBe(200);
     expect((await request(app).get('/api/doctor/me').set(bearer(other.token))).status).toBe(401);
-    const login = await request(app).post('/api/auth/login').send({ email: other.code, password: other.password });
+    const login = await request(app).post('/api/auth/login').send({ email: other.email, password: other.password });
     expect(login.status).toBe(403);
   });
 

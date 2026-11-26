@@ -100,7 +100,7 @@ export const createReadyDoctor = async (app: Express, adminToken: string, overri
     });
   if (created.status !== 201) throw new Error(`doctor create failed: ${created.status} ${JSON.stringify(created.body)}`);
   const { login, doctor } = created.body.data;
-  const first = await request(app).post('/api/auth/login').send({ email: login.doctorCode, password: login.password });
+  const first = await request(app).post('/api/auth/login').send({ email: login.email, password: login.password });
   if (first.status !== 200 || first.body.accountType !== 'doctor') throw new Error(`doctor login failed: ${JSON.stringify(first.body)}`);
   const newPassword = 'Doctor-pass-456';
   const changed = await request(app)

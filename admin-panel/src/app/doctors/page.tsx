@@ -256,7 +256,6 @@ export default function DoctorsPage() {
         >
           {[
             ["Login page", typeof window !== "undefined" ? `${window.location.origin}/login` : "/login"],
-            ["Doctor ID", login.doctorCode],
             ["Email", login.email],
             ["Temporary password", login.password],
           ].map(([label, value]) => (

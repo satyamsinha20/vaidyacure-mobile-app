@@ -165,7 +165,7 @@ export const TEMPLATE_DEFS = {
     placeholders: { name: "Doctor's name", doctorCode: 'Doctor ID (e.g. DR4821)', panelUrl: 'Login page link' },
     required: [],
     subject: 'Your VaidyaCure doctor account is ready',
-    body: 'Welcome, {{name}}.\n\nYour doctor ID is {{doctorCode}}. You can log in with this ID or this email address.\nYour temporary password will be shared with you by the VaidyaCure admin. You must change it on your first login.\n\nDoctor panel: {{panelUrl}}',
+    body: 'Welcome, {{name}}.\n\nYour doctor ID is {{doctorCode}}. Log in with this email address.\nYour temporary password will be shared with you by the VaidyaCure admin. You must change it on your first login.\n\nDoctor panel: {{panelUrl}}',
   },
 } satisfies Record<string, TemplateDef>;
 
